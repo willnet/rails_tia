@@ -122,10 +122,20 @@ this supplementation independently of coverage and ActiveRecord tracking.
 Run from the project root, starting coverage before the application loads:
 
 ```bash
-RUBYOPT="-rrspec_tia/boot" bundle exec rspec \
+bundle exec ruby -rrspec_tia/boot -S rspec \
   --require rspec_tia/formatter --format RspecTia::Formatter
 bundle exec rspec-tia map merge
 ```
+
+If your app loads `bootsnap/setup`, load `rspec_tia/boot` first. It sets
+`DISABLE_BOOTSNAP_COMPILE_CACHE=1`, which `bootsnap/setup` reads when it
+initializes Bootsnap. If Bootsnap initializes earlier, move its setup after
+`rspec_tia/boot` so the setting takes effect.
+
+If your app calls `Bootsnap.setup` directly, pass `compile_cache_iseq: false`
+and `compile_cache_yaml: false` in the map collection process.
+Bootsnap can still cache load path lookups during collection. Selection and
+ordinary RSpec runs can use Bootsnap with their usual settings.
 
 The formatter writes `map-<node>-<process>.json.gz` fragments under `map.fragment_dir`, using `CI_NODE_INDEX` and `TEST_ENV_NUMBER` when available. Collect fragments from all parallel workers before merging. Clear old fragments before each map generation so that previous runs cannot contaminate the map. Maps from failed tests or hooks are marked stale and cause selection to fall back to a full run.
 

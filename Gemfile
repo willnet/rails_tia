@@ -4,6 +4,7 @@ gemspec
 
 gem 'rake'
 gem 'rspec', '~> 3.13'
+gem 'bootsnap', '~> 1.21'
 
 # Verify formatter load order and dependency tracking using real Rails, ActiveRecord and ActionView.
 gem 'railties', '~> 7.2'

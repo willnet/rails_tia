@@ -21,6 +21,8 @@ RSpecの全実行からspecファイル単位の依存マップを生成し、�
 
 `oneshot_lines` は使わない。クリアしても一度記録された行が再記録されず、最初に通ったspecだけが依存を持つマップになってしまう。
 
+Ruby 3.4.12 と Bootsnap 1.21.1 の組み合わせでは、Coverage開始後に `bootsnap/setup` を読み込むと命令列のコンパイルキャッシュの初期化が失敗する。Savannaのモデル・リクエスト・system specでは、コンパイルキャッシュだけを無効にした場合とBootsnap全体を無効にした場合で同一のマップを得られた。計測用の `rspec_tia/boot` で `DISABLE_BOOTSNAP_COMPILE_CACHE` を設定し、ロードパスのキャッシュは利用できるようにする。
+
 粒度はexample単位ではなくspecファイル単位とする。example単位では取得回数が大幅に増える。旧READMEに記録された実測では、1,966 specファイルのRailsアプリで1回25〜31ms、合計約53秒だった。この数値は特定環境の観測であり、性能保証ではない。
 
 ## Hookと起動時の依存
