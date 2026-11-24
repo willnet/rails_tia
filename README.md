@@ -18,7 +18,7 @@ Run `bundle install`. While the gem is unreleased, use a local checkout with `ge
 
 ## Workflow
 
-1. Run the full suite periodically on your default branch to generate a dependency map.
+1. Run the full suite on your default branch to generate a dependency map, on push or on a schedule.
 2. Make that map available to change pipelines, using CI artifacts or your own transfer mechanism.
 3. Select and run affected specs for each change.
 4. Keep running full-suite checks and audit the predictions to detect missed failures.
@@ -47,6 +47,7 @@ full_run:
     - spec/rails_helper.rb
     - spec/support/**/*
     - .gitlab-ci.yml
+    - .github/workflows/**/*
   max_changed_files: 300
   labels:
     - 'pipeline:run-all-rspec'
@@ -71,7 +72,7 @@ rails:
   action_view: true
 
 ci:
-  adapter: auto  # auto | gitlab | git
+  adapter: auto  # auto | gitlab | github_actions | git
 
 metrics_path: tmp/rspec_tia/metrics.json
 ```
@@ -212,6 +213,84 @@ bundle exec rspec-tia select > specs.txt || exit "$?"
 Supported job names are a single `map_job_name` or GitLab numeric parallel names such as `rspec-map 1/4`. All nodes must succeed and provide valid, fresh fragments from the same commit. Incomplete or invalid downloads fail and preserve the existing merged map. Other naming formats, including `parallel:matrix`, are unsupported. Ensure each job saves fragments from every process, and propagate RSpec and artifact-upload failures.
 
 When no map fragments are available through the adapter's normal no-map path, `map fetch` removes the existing merged map so selection falls back to a full run. Artifact HTTP failures, including 404 responses, are errors. Redirects, such as GitLab.com artifact downloads served through a CDN, are followed; the token is sent only to the GitLab API origin. Use `map fetch --no-merge` to download without merging, or `--dest DIR` to change the download directory.
+
+## GitHub Actions integration
+
+Opt in to the GitHub Actions adapter in `.rspec_tia.yml`. Set `map_workflow` to the workflow filename or its numeric ID. `map_event` defaults to `push`.
+
+```yaml
+ci:
+  adapter: github_actions
+  github_actions:
+    map_workflow: rspec.yml
+    map_event: push
+    map_artifact_name: rspec-tia-map
+```
+
+Save the example below as `.github/workflows/rspec.yml`. Add any services and setup steps your project needs before running RSpec.
+
+```yaml
+name: RSpec
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  rspec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: true
+
+      - name: Generate map from the full suite
+        if: github.event_name == 'push'
+        run: |
+          bundle exec ruby -rrspec_tia/boot -S rspec \
+            --require rspec_tia/formatter --format RspecTia::Formatter
+          bundle exec rspec-tia map merge
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: rspec-tia-map
+          path: tmp/rspec_tia/map.json.gz
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Fetch the map
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bundle exec rspec-tia map fetch
+      - name: Run selected specs
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          bundle exec rspec-tia select > specs.txt
+          if [ -s specs.txt ]; then
+            mapfile -t specs < specs.txt
+            bundle exec rspec "${specs[@]}"
+          fi
+```
+
+The default PR merge checkout needs both parents (`fetch-depth: 2`). If you check out the PR head explicitly, fetch the full history (`fetch-depth: 0`) so Git can find its common ancestor with the target commit. Selection uses labels from the PR event and the latest PR commit message for full-run rules. The example starts a new run when a label is added or removed. Other events use full runs.
+
+The adapter looks for a successful run of the configured workflow on the PR target branch at the exact commit used as the baseline for the diff. Use `map_event: schedule` only when a scheduled run can cover that commit. GitHub runs scheduled workflows on the default branch tip, so PRs targeting other branches or commits without a matching scheduled run use the full suite.
+
+Upload an artifact containing one merged `.json` or `.json.gz` map. If map generation is parallel, collect and merge the fragments from every worker before uploading. `map fetch` uses the same repository's `GITHUB_TOKEN` with `actions: read` permission. Downloads go in `map.fragment_dir/github-actions` by default, where `map merge` leaves them out when merging newly generated fragments. Use `--dest DIR` to override the download directory. [Artifact API permissions](https://docs.github.com/en/rest/actions/artifacts#list-workflow-run-artifacts)
+
+Outside a PR, or when the matching run or map is unavailable or too old, `map fetch` clears the existing map and `select` runs the full suite. This includes a successful run without the named artifact and an artifact that expires or disappears between listing and download. A download `404` is treated as missing only if a fresh listing confirms the artifact is unavailable. Authentication failures, other API errors, and invalid maps cause `map fetch` to fail and preserve the existing map.
 
 ## Audit and diagnostics
 

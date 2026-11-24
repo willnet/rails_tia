@@ -40,6 +40,11 @@ module RspecTia
           'map_job_name' => nil,
           'map_artifact_glob' => 'tmp/rspec_tia/fragments',
         },
+        'github_actions' => {
+          'map_workflow' => nil,
+          'map_event' => 'push',
+          'map_artifact_name' => 'rspec-tia-map',
+        },
       },
       'metrics_path' => 'tmp/rspec_tia/metrics.json',
     }.freeze
@@ -78,6 +83,7 @@ module RspecTia
 
     def ci_adapter = dig('ci', 'adapter')
     def gitlab_options = dig('ci', 'gitlab')
+    def github_actions_options = dig('ci', 'github_actions')
 
     def active_record_enabled? = dig('rails', 'active_record')
     def action_view_enabled? = dig('rails', 'action_view')

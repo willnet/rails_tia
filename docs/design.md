@@ -79,7 +79,15 @@ A successful prediction can select zero specs. Authentication failures and error
 
 Each process saves its own fragment. The GitLab adapter enumerates fragments in the artifact ZIP so it can handle the filenames and process counts used by the job. For numeric parallel jobs, it checks that all nodes succeeded, their indices are consecutive, and their fragments are present, valid, fresh, and from the same commit. A retrieval error preserves the existing merged map. When retrieval succeeds and no map is available, the adapter workflow removes the old map so selection falls back to the full suite.
 
-GitLab.com can redirect artifact downloads to a CDN. The HTTP client follows redirects and strips authentication headers when the origin changes, preventing the API token from reaching the signed URL's host. Error messages show only the original request URL to keep signed URLs out of CI logs.
+For a GitHub Actions PR merge checkout, the first parent of the merge commit is the baseline for both the diff and the map. A direct PR head checkout uses its common ancestor with the target commit from the event. The target branch can advance while CI is running, so the adapter looks for a successful workflow run at that exact baseline commit.
+
+The workflow that generates the map collects fragments from all workers and uploads one merged map. The fetching job validates that map and saves it in a subdirectory so a later `map merge` in the same workspace cannot mix it with newly generated fragments.
+
+A missing successful run, a missing artifact, or a confirmed expiry triggers a full run. A download `404` can also indicate insufficient access, so the adapter lists artifacts again and falls back to the full suite only when that listing confirms the artifact is missing or expired.
+
+The GitHub Actions adapter requires explicit configuration. Existing GitHub Actions workflows that use the generic Git adapter through `auto` can keep their checkout and diff settings.
+
+GitLab and GitHub Actions can redirect artifact downloads to signed URLs. The HTTP client follows redirects and strips authentication headers when the origin changes, preventing the API token from reaching the signed URL's host. Error messages show only the original request URL to keep signed URLs out of CI logs.
 
 ## Ongoing validation
 

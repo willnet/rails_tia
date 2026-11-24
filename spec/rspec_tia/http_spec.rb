@@ -64,6 +64,12 @@ RSpec.describe RspecTia::Http do
     expect { http.get('/loop') }.to raise_error(described_class::Error, /more than 5 redirects/)
   end
 
+  it '410 Goneを識別できるエラーにする' do
+    stub_responses('https://gitlab.example.test/api/v4/artifact' => -> { Net::HTTPGone.new('1.1', '410', 'Gone') })
+
+    expect { http.get('/artifact') }.to raise_error(described_class::Gone, /410 Gone/)
+  end
+
   ['', 'ftp://cdn.example.test/a.zip', 'http://[invalid'].each do |location|
     it "不正なLocation #{location.inspect} は失敗として扱う" do
       stub_responses('https://gitlab.example.test/api/v4/jobs/1/artifacts' => -> { redirect(location) })

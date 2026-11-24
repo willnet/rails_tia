@@ -24,6 +24,7 @@ module RspecTia
     # Indicates a missing artifact, such as an expired artifact or a nonexistent process filename.
     # Distinguish this from transient transport failures when deciding whether to stop fetching.
     class NotFound < Error; end
+    class Gone < Error; end
 
     def initialize(base_url:, headers: {})
       @base_url = base_url.to_s.chomp('/')
@@ -35,6 +36,7 @@ module RspecTia
       uri = URI.parse("#{@base_url}#{path}")
       response = follow_redirects(uri)
       raise NotFound, "GET #{uri} not found: #{response.code} #{response.message}" if response.is_a?(Net::HTTPNotFound)
+      raise Gone, "GET #{uri} gone: #{response.code} #{response.message}" if response.is_a?(Net::HTTPGone)
       raise Error, "GET #{uri} failed: #{response.code} #{response.message}" unless response.is_a?(Net::HTTPSuccess)
 
       response.body
