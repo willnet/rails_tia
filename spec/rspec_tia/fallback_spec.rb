@@ -24,33 +24,33 @@ RSpec.describe RspecTia::Fallback do
   end
 
   it 'MR以外のパイプラインでは全実行にする' do
-    expect(fallback.reason(context(merge_request: false))).to match(/Not a merge request pipeline/)
+    expect(fallback.decision(context(merge_request: false))).to match(['not_merge_request', /Not a merge request pipeline/])
   end
 
   it 'マップが無い場合は全実行にする' do
     empty = described_class.new(config: config, map: RspecTia::Map.new(generated_at: Time.now))
 
-    expect(empty.reason(context)).to match(/No coverage map available/)
+    expect(empty.decision(context)).to match(['missing_map', /No coverage map available/])
   end
 
   it 'マップが古い場合は全実行にする' do
     stale = RspecTia::Map.new(generated_at: Time.now - (10 * 24 * 60 * 60)).add('spec/a_spec.rb', %w(app/x.rb))
 
-    expect(described_class.new(config: config, map: stale).reason(context)).to match(/Coverage map is stale/)
+    expect(described_class.new(config: config, map: stale).decision(context)).to match(['stale_map', /Coverage map is stale/])
   end
 
   it '全実行ラベルが付いていたら全実行にする' do
-    expect(fallback.reason(context(labels: %w(bug pipeline:run-all-rspec)))).to match(/Full-run label/)
+    expect(fallback.decision(context(labels: %w(bug pipeline:run-all-rspec)))).to match(['label', /Full-run label/])
   end
 
   it 'コミットメッセージに指定があれば全実行にする' do
-    expect(fallback.reason(context(commit_message: 'fix: なにか [run-all-rspec]'))).to match(/commit message/)
+    expect(fallback.decision(context(commit_message: 'fix: なにか [run-all-rspec]'))).to match(['commit_message', /commit message/])
   end
 
   it '変更ファイル数が閾値を超えたら全実行にする' do
     many = (1..6).map { |i| "app/#{i}.rb" }
 
-    expect(fallback.reason(context(changed_files: many))).to match(/Too many changed files/)
+    expect(fallback.decision(context(changed_files: many))).to match(['changed_file_limit', /Too many changed files/])
   end
 
   describe '全実行対象のパス' do
@@ -62,7 +62,7 @@ RSpec.describe RspecTia::Fallback do
       '.gitlab/ci/test_stage_rails.yml' => 'CI定義そのもの',
     }.each do |path, why|
       it "#{path} の変更で全実行にする（#{why}）" do
-        expect(fallback.reason(context(changed_files: [path]))).to match(/Full-run path changed/)
+        expect(fallback.decision(context(changed_files: [path]))).to match(['path', /Full-run path changed/])
       end
     end
 

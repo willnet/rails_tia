@@ -3,6 +3,7 @@ require 'rspec/core'
 require 'rspec/core/formatters'
 require 'set'
 require 'rspec_tia'
+require 'rspec_tia/run_report'
 require 'rspec_tia/rails_support'
 require 'rspec_tia/action_view_support'
 require 'rspec_tia/described_class_support'
@@ -28,6 +29,9 @@ module RspecTia
       @config = RspecTia.config
       @root = @config.root.end_with?('/') ? @config.root : "#{@config.root}/"
       @map = Map.new(generated_at: Time.now, commit_sha: RspecTia.commit_sha)
+      @report = RunReport.for('map_worker', @config)
+      @coverage_calls = 0
+      @example_count = 0
       @current_spec = nil
       @rails_support = nil
       @action_view_support = nil
@@ -35,10 +39,11 @@ module RspecTia
     end
 
     def start(_notification)
+      @started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) if @report
       @rails_support ||= build_rails_support
       @action_view_support ||= build_action_view_support
       # Discard lines executed during boot and spec loading.
-      Coverage.result(stop: false, clear: true)
+      coverage_result
       @rails_support&.flush
       @action_view_support&.flush
     end
@@ -56,6 +61,7 @@ module RspecTia
     end
 
     def example_started(notification)
+      @example_count += 1 if @report
       switch_spec(relative(spec_path_of(notification.example)))
       if @described_class_support
         @map.add(@current_spec, @described_class_support.files_for(notification.example.example_group.described_class))
@@ -65,12 +71,17 @@ module RspecTia
     def stop(notification)
       flush
       @map.specs.each { |spec| @map.add(spec, (@suite_sources || []).to_a) }
-      if notification.failed_examples.any? || RSpec.world.non_example_failure
+      failed = notification.failed_examples.any? || RSpec.world.non_example_failure
+      if failed
         # Maps with unexecuted paths due to failed hooks or fail-fast must not pass freshness checks.
         @map.load_hash(@map.to_h.merge('generated_at' => Time.at(0).utc.iso8601))
         warn '[rspec_tia] Test run failed; saving the generated map as stale'
       end
-      @map.dump(fragment_path)
+      if @report
+        save_fragment_with_report(failed)
+      else
+        @map.dump(fragment_path)
+      end
     ensure
       @rails_support&.unsubscribe
       @action_view_support&.unsubscribe
@@ -79,6 +90,31 @@ module RspecTia
     end
 
     private
+
+    def coverage_result
+      return Coverage.result(stop: false, clear: true) unless @report
+
+      @coverage_calls += 1
+      @report.measure(:coverage) { Coverage.result(stop: false, clear: true) }
+    end
+
+    def save_fragment_with_report(failed)
+      path = fragment_path
+      json = nil
+      @report.measure(:write_fragment) { @map.dump(path) { |serialized| json = serialized } }
+      suite_seconds = Process.clock_gettime(Process::CLOCK_MONOTONIC) - @started_at
+      @report.write do
+        {
+          fragment_id: Digest::SHA256.hexdigest(json), fragment_bytes: File.size(path),
+          spec_count: @map.specs.size, example_count: @example_count, coverage_calls: @coverage_calls,
+          suite_seconds: suite_seconds, failed: !!failed,
+          ruby_version: RUBY_VERSION, rspec_version: RSpec::Core::Version::STRING,
+          rails_version: Gem.loaded_specs['railties']&.version&.to_s,
+          tracking: { active_record: !!@rails_support, action_view: !!@action_view_support,
+                      described_class: !!@described_class_support },
+        }
+      end
+    end
 
     def build_rails_support
       return nil unless @config.rails_enabled? && @config.active_record_enabled?
@@ -117,9 +153,10 @@ module RspecTia
     end
 
     def flush
-      result = Coverage.result(stop: false, clear: true)
+      result = coverage_result
       touched = (@rails_support&.flush || []) + (@action_view_support&.flush || [])
-      sources = project_files(result) + touched
+      files = @report ? @report.measure(:scan) { project_files(result) } : project_files(result)
+      sources = files + touched
       if @current_spec.nil?
         # Attribute before/after(:suite) dependencies to every spec, not just the first or last.
         (@suite_sources ||= Set.new).merge(sources)

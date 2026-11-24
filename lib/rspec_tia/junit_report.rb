@@ -1,5 +1,6 @@
 require 'rexml/document'
 require 'set'
+require 'pathname'
 
 module RspecTia
   # Read JUnit XML produced by rspec_junit_formatter.
@@ -11,19 +12,25 @@ module RspecTia
     FAILURE_ELEMENTS = %w(failure error).freeze
 
     class << self
-      def load_dir(dir)
-        paths = Dir.glob(File.join(dir, '**', '*.xml')).sort
-        new(paths)
+      def load_dir(dir, expected_files: [])
+        files = Dir.glob('**/*.xml', base: dir).sort
+        paths = files.map { |name| File.join(dir, name) }
+        expected = expected_files.map { |name| Pathname.new(name).cleanpath.to_s }.uniq
+        new(paths, missing_files: expected - files, expected_paths: expected.map { |name| File.join(dir, name) })
       end
     end
 
-    def initialize(paths)
+    attr_reader :missing_files
+
+    def initialize(paths, missing_files: [], expected_paths: [])
       @paths = paths
+      @missing_files = missing_files
+      @expected_paths = expected_paths
       @durations = Hash.new(0.0)
       @failed_files = Set.new
       @parsed = false
-      @validation_errors = []
-      @parsed_file_count = 0
+      @validation_errors = missing_files.map { |name| "Missing expected JUnit file: #{name}" }
+      @parsed_paths = Set.new
     end
 
     def durations
@@ -44,7 +51,14 @@ module RspecTia
 
     def parsed_file_count
       parse
-      @parsed_file_count
+      @parsed_paths.size
+    end
+
+    def complete?
+      return nil if @expected_paths.empty?
+
+      parse
+      @missing_files.empty? && @expected_paths.all? { |path| @parsed_paths.include?(path) }
     end
 
     def empty?
@@ -69,8 +83,6 @@ module RspecTia
         return
       end
 
-      # Allow valid empty suites, distinguishing them from missing or malformed XML.
-      @parsed_file_count += 1
       REXML::XPath.each(document, '//testcase') do |testcase|
         file = normalize(testcase.attributes['file'])
         if file.nil?
@@ -81,6 +93,8 @@ module RspecTia
         @durations[file] += testcase.attributes['time'].to_f
         @failed_files << file if failed?(testcase)
       end
+      # An empty suite still counts as a parsed shard.
+      @parsed_paths << path
     rescue REXML::ParseException, SystemCallError => e
       # Keep processing other files if a JUnit report is truncated, for example by a job timeout.
       message = "Could not read junit.xml: #{path}: #{e.message}"

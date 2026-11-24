@@ -4,6 +4,7 @@ require 'rspec_tia/audit'
 require 'rspec_tia/ci'
 require 'rspec_tia/junit_report'
 require 'rspec_tia/metrics'
+require 'rspec_tia/run_report'
 
 module RspecTia
   class Cli
@@ -20,6 +21,8 @@ module RspecTia
       Common options:
         --config PATH         Configuration file (default: .rspec_tia.yml)
         --root PATH           Project root (default: current directory)
+
+      Set RSPEC_TIA_REPORT_DIR to write JSON reports for CI storage.
     TEXT
 
     def self.start(argv)
@@ -44,8 +47,8 @@ module RspecTia
         warn "Unknown command: #{command}\n\n#{USAGE}"
         1
       end
-    rescue Ci::Gitlab::AuthenticationError, Ci::GithubActions::Error, Http::Error, Ci::Git::CommandError, Ci::UnknownAdapterError,
-           Ci::Base::UnsupportedError, Map::FormatError, Errno::ENOENT => e
+    rescue Ci::Gitlab::AuthenticationError, Ci::GithubActions::Error, Http::Error, Ci::Git::CommandError,
+           Ci::UnknownAdapterError, Ci::Base::UnsupportedError, Map::FormatError, RunReport::Error, Errno::ENOENT => e
       warn "[rspec_tia] #{e.message}"
       1
     end
@@ -61,12 +64,22 @@ module RspecTia
         end
       end
 
-      result = Predictor.new(config: config, map: load_map).call(select_context)
-      puts(result.full_run? ? config.full_run_token : result.specs)
+      report = RunReport.for('select', config)
+      map_id = nil
+      map = load_map { |json| map_id = Digest::SHA256.hexdigest(json) if report }
+      result = Predictor.new(config: config, map: map).call(select_context, trace: !!report)
 
       metrics = Metrics.new(config: config, result: result, junit_report: junit_report(@options[:junit_dir]))
-      metrics.write(@options[:metrics] || config.metrics_path)
-      warn metrics.summary
+      data = metrics.to_h
+      metrics.write(@options[:metrics] || config.metrics_path, data: data)
+      report&.write do
+        data.merge(
+          'map_id' => map_id, 'changed_files' => result.sources, 'selected_specs' => result.specs,
+          'reason_code' => result.reason_code, 'matches' => result.matches,
+        )
+      end
+      puts(result.full_run? ? config.full_run_token : result.specs)
+      warn metrics.summary(data)
       0
     end
 
@@ -119,8 +132,14 @@ module RspecTia
     end
 
     def merge_fragments(fragments)
-      map = Map.merge_files(fragments)
-      path = map.dump(@options[:output] || config.map_path)
+      path = @options[:output] || config.map_path
+      report = RunReport.for('map_merge', config)
+      if report
+        map = report.merge_map(fragments, path)
+      else
+        map = Map.merge_files(fragments)
+        map.dump(path)
+      end
       warn format('[rspec_tia] Merged %d fragments -> %s (%d specs / %d sources)',
                   fragments.size, path, map.specs.size, map.sources.size)
       0
@@ -130,20 +149,43 @@ module RspecTia
       parse!('audit') do |parser|
         parser.on('--junit DIR', 'JUnit XML directory from a full-suite run') { |v| @options[:junit] = v }
         parser.on('--predicted PATH', 'Predicted spec list (one path per line)') { |v| @options[:predicted] = v }
+        parser.on('--selection-report PATH', 'Use the JSON report from select as the prediction') { |v| @options[:selection_report] = v }
+        parser.on('--expect-junit FILE', 'Expected XML path relative to --junit (repeat per shard)') do |v|
+          (@options[:expected_junit] ||= []) << v
+        end
       end
 
-      missing = %i(junit predicted).reject { |key| @options[key] }
-      unless missing.empty?
-        warn "[rspec_tia] Required options: --#{missing.join(' and --')}"
+      unless @options[:junit] && [@options[:predicted], @options[:selection_report]].compact.one?
+        warn '[rspec_tia] Required options: --junit and exactly one of --predicted or --selection-report'
         return 1
       end
 
-      predicted = File.readlines(@options[:predicted], chomp: true).reject(&:empty?)
-      result = Audit.new(
-        junit_report: JunitReport.load_dir(@options[:junit]),
-        predicted_specs: predicted,
-        full_run: predicted == [config.full_run_token],
-      ).call
+      if @options[:selection_report]
+        selection = RunReport.load_selection(@options[:selection_report])
+        if selection['commit_sha'] && RspecTia.commit_sha && selection['commit_sha'] != RspecTia.commit_sha
+          raise RunReport::Error, 'Selection report is from a different commit'
+        end
+        predicted = selection.fetch('selected_specs')
+        full_run = selection.fetch('full_run')
+      else
+        predicted = File.readlines(@options[:predicted], chomp: true).reject(&:empty?)
+        full_run = predicted == [config.full_run_token]
+      end
+
+      expected = @options.fetch(:expected_junit, [])
+      junit = JunitReport.load_dir(@options[:junit], expected_files: expected)
+      result = Audit.new(junit_report: junit, predicted_specs: predicted, full_run: full_run).call
+      report = RunReport.for('audit', config)
+      report&.write do
+        valid = result.validation_errors.empty?
+        {
+          prediction_id: selection&.fetch('report_id'), map_id: selection&.fetch('map_id', nil),
+          full_run: full_run, valid: valid, failed_specs: result.failed_specs.sort,
+          missed_specs: valid ? result.missed_specs.sort : nil, validation_errors: result.validation_errors,
+          junit_file_count: junit.parsed_file_count, expected_junit_files: expected,
+          missing_junit_files: junit.missing_files, junit_complete: junit.complete?,
+        }
+      end
       warn result.summary
       result.ok? ? 0 : 1
     end
@@ -227,11 +269,11 @@ module RspecTia
       )
     end
 
-    def load_map
+    def load_map(&on_json)
       path = config.map_path
       return Map.new unless File.exist?(path)
 
-      Map.load(path)
+      Map.load(path, &on_json)
     end
 
     def junit_report(dir)

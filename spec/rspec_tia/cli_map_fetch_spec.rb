@@ -42,6 +42,8 @@ RSpec.describe 'map fetch後の予測' do
   end
 
   it '取得した断片で既存マップを置き換え、後続selectで新しい依存を使う' do
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with('RSPEC_TIA_REPORT_DIR').and_return('history')
     write_map(@config.map_path, Time.now, 'lib/old.rb')
     fragment = File.join(@root, 'download/new.json.gz')
     write_map(fragment, Time.now, 'lib/new.rb')
@@ -51,6 +53,10 @@ RSpec.describe 'map fetch後の予測' do
     map = RspecTia::Map.load(@config.map_path)
     expect(map.sources).to contain_exactly('lib/new.rb')
     expect { expect(select(@root)).to eq(0) }.to output("spec/a_spec.rb\n").to_stdout
+    reports = File.join(@root, 'history')
+    merged = JSON.parse(File.read(Dir.glob(File.join(reports, 'map_merge-*.json')).fetch(0)))
+    selected = JSON.parse(File.read(Dir.glob(File.join(reports, 'select-*.json')).fetch(0)))
+    expect(merged.fetch('map_id')).to eq(selected.fetch('map_id'))
   end
 
   it '取得に対応しないアダプタでは既存マップを維持して非ゼロ終了する' do

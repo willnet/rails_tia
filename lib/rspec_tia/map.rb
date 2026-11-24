@@ -21,22 +21,25 @@ module RspecTia
       # Report corrupted files, such as truncated gzip or JSON, as FormatError with the path
       # so that the CLI can fail with a diagnostic instead of a backtrace.
       def load(path)
-        new.tap { |map| map.load_hash(read_hash(path)) }
+        json = read_json(path)
+        map = new
+        map.load_hash(JSON.parse(json))
+        yield json if block_given?
+        map
       rescue FormatError, JSON::ParserError, Zlib::Error => e
         raise FormatError, "Invalid map file: #{path}: #{e.message}"
       end
 
       # Merge fragments produced by parallel_tests processes and CI nodes.
-      def merge_files(paths)
-        paths.reduce(new) { |merged, path| merged.merge!(load(path)) }
+      def merge_files(paths, &on_fragment)
+        paths.reduce(new) { |merged, path| merged.merge!(load(path, &on_fragment)) }
       end
 
       private
 
-      def read_hash(path)
+      def read_json(path)
         raw = File.binread(path)
-        raw = Zlib::GzipReader.new(StringIO.new(raw)).read if gzipped?(raw)
-        JSON.parse(raw)
+        gzipped?(raw) ? Zlib::GzipReader.new(StringIO.new(raw)).read : raw
       end
 
       # Detect gzip using its magic bytes rather than the filename extension.
@@ -107,6 +110,7 @@ module RspecTia
       else
         File.write(path, json)
       end
+      yield json if block_given?
       path
     end
 

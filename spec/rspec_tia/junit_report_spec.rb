@@ -69,4 +69,15 @@ RSpec.describe RspecTia::JunitReport do
   it 'junit.xmlが無ければ空とみなす' do
     Dir.mktmpdir { |dir| expect(described_class.load_dir(dir)).to be_empty }
   end
+
+  it 'assesses expected shards separately from unrelated XML validation errors' do
+    Dir.mktmpdir do |dir|
+      write_junit(dir, 'ok.xml', xml_a)
+      write_junit(dir, 'other.xml', '<other/>')
+      report = described_class.load_dir(dir, expected_files: ['./ok.xml'])
+      expect(report).to be_complete
+      expect(report.missing_files).to be_empty
+      expect(report.validation_errors.join).to include('other.xml')
+    end
+  end
 end
