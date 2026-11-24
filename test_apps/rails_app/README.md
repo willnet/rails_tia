@@ -31,7 +31,7 @@ workdir="$(mktemp -d)"
 cp -R test_apps/rails_app "$workdir/app"
 (
   cd "$workdir/app" || exit 1
-  unset RUBYOPT RSPEC_OPTS SPEC_OPTS RSPEC_TIA_CONFIG RSPEC_TIA_FRAGMENT_PATH DATABASE_URL
+  unset RUBYOPT RSPEC_OPTS SPEC_OPTS RAILS_TIA_CONFIG RAILS_TIA_FRAGMENT_PATH RAILS_TIA_REPORT_DIR DATABASE_URL
   unset CI_NODE_INDEX CI_NODE_TOTAL TEST_ENV_NUMBER PARALLEL_TEST_GROUPS PARALLEL_PID_FILE
   export BUNDLE_GEMFILE="$repository/Gemfile"
   export RAILS_ENV=test FIXTURE_EAGER_LOAD=false
@@ -44,9 +44,9 @@ Set `FIXTURE_EAGER_LOAD=true` for eager loading. To collect a map, replace the
 `bundle exec rspec` line with:
 
 ```sh
-bundle exec ruby -I "$repository/lib" -rrspec_tia/boot -S rspec \
+bundle exec ruby -I "$repository/lib" -rrails_tia/boot -S rspec \
   --options .rspec --order defined \
-  --require rspec_tia/formatter --format RspecTia::Formatter
+  --require rails_tia/formatter --format RailsTia::Formatter
 ```
 
 The model is explicitly loaded before the suite starts in every mode. Its class
@@ -135,7 +135,7 @@ require `spec/support/rails_app_runner.rb`; the parent helper does not autoload 
 Integration runs use `Dir.mktmpdir` and delete their copies on exit. JSON reports
 and map fragments live under each copy's `tmp/run-N/`; SQLite stays in memory and
 Rails logs go to the null device. Direct map collection uses the configured
-`tmp/rspec_tia/fragments/` inside the copy. No generated artifacts belong in this
+`tmp/rails_tia/fragments/` inside the copy. No generated artifacts belong in this
 fixture or the gem package.
 
 Each child has a 45-second timeout; a timed-out process group is killed and reaped.

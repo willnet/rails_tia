@@ -1,6 +1,6 @@
-# rspec_tia
+# rails_tia
 
-Test Impact Analysis for RSpec. Build a dependency map from code coverage, then select the spec files affected by changed files.
+Test Impact Analysis for Rails applications. Build a dependency map from RSpec coverage, then select the spec files affected by changed files.
 
 > Under development (v0.1.0, unreleased). Interfaces may change.
 
@@ -10,11 +10,11 @@ Ruby 3.3 or later and RSpec Core 3.9 or later are required. Add the gem to your 
 
 ```ruby
 group :test do
-  gem 'rspec_tia'
+  gem 'rails_tia'
 end
 ```
 
-Run `bundle install`. While the gem is unreleased, use a local checkout with `gem 'rspec_tia', path: '/path/to/rspec_tia'`.
+Run `bundle install`. While the gem is unreleased, use a local checkout with `gem 'rails_tia', path: '/path/to/rails_tia'`.
 
 ## Workflow
 
@@ -27,15 +27,17 @@ Selection combines coverage dependencies, static mappings, and changed spec file
 
 ## Configuration
 
-Create `.rspec_tia.yml` in your project root. The paths and static mappings below are examples: adapt them to your application. Full-run paths, labels, tokens, and static mappings are empty by default.
+Create `.rails_tia.yml` in your project root. The paths and static mappings below are examples: adapt them to your application. Full-run paths, labels, tokens, and static mappings are empty by default.
+
+To use a different configuration file, set `RAILS_TIA_CONFIG` for the RSpec formatter or pass `--config PATH` to the CLI.
 
 ```yaml
 spec_glob: 'spec/**/*_spec.rb'
 full_run_token: spec
 
 map:
-  fragment_dir: tmp/rspec_tia/fragments
-  path: tmp/rspec_tia/map.json.gz
+  fragment_dir: tmp/rails_tia/fragments
+  path: tmp/rails_tia/map.json.gz
   max_age_days: 3
 
 # Changes that coverage cannot reliably track should trigger a full run.
@@ -74,7 +76,7 @@ rails:
 ci:
   adapter: auto  # auto | gitlab | github_actions | git
 
-metrics_path: tmp/rspec_tia/metrics.json
+metrics_path: tmp/rails_tia/metrics.json
 ```
 
 Path globs use Ruby's `File.fnmatch?` with `FNM_PATHNAME | FNM_EXTGLOB`. Use `config/**/*` for nested paths; `config/**` does not match nested files. Static mapping sources are regular expressions, rather than path globs.
@@ -123,15 +125,15 @@ this supplementation independently of coverage and ActiveRecord tracking.
 Run from the project root, starting coverage before the application loads:
 
 ```bash
-bundle exec ruby -rrspec_tia/boot -S rspec \
-  --require rspec_tia/formatter --format RspecTia::Formatter
-bundle exec rspec-tia map merge
+bundle exec ruby -rrails_tia/boot -S rspec \
+  --require rails_tia/formatter --format RailsTia::Formatter
+bundle exec rails-tia map merge
 ```
 
-If your app loads `bootsnap/setup`, load `rspec_tia/boot` first. It sets
+If your app loads `bootsnap/setup`, load `rails_tia/boot` first. It sets
 `DISABLE_BOOTSNAP_COMPILE_CACHE=1`, which `bootsnap/setup` reads when it
 initializes Bootsnap. If Bootsnap initializes earlier, move its setup after
-`rspec_tia/boot` so the setting takes effect.
+`rails_tia/boot` so the setting takes effect.
 
 If your app calls `Bootsnap.setup` directly, pass `compile_cache_iseq: false`
 and `compile_cache_yaml: false` in the map collection process.
@@ -140,7 +142,7 @@ ordinary RSpec runs can use Bootsnap with their usual settings.
 
 The formatter writes `map-<node>-<process>.json.gz` fragments under `map.fragment_dir`, using `CI_NODE_INDEX` and `TEST_ENV_NUMBER` when available. Collect fragments from all parallel workers before merging. Clear old fragments before each map generation so that previous runs cannot contaminate the map. Maps from failed tests or hooks are marked stale and cause selection to fall back to a full run.
 
-Use `RSPEC_TIA_FRAGMENT_PATH` to override the fragment output path. `map merge --fragments DIR --output PATH` overrides the merge input directory and output file.
+Use `RAILS_TIA_FRAGMENT_PATH` to override the fragment output path. `map merge --fragments DIR --output PATH` overrides the merge input directory and output file.
 
 ## Select and run specs
 
@@ -148,7 +150,7 @@ This Bash script runs selection from the project root, skips RSpec when no specs
 
 ```bash
 #!/usr/bin/env bash
-bundle exec rspec-tia select > specs.txt || exit "$?"
+bundle exec rails-tia select > specs.txt || exit "$?"
 [ -s specs.txt ] || exit 0
 
 specs=()
@@ -166,12 +168,12 @@ The Bash array preserves spaces, backslashes, and wildcard characters in output 
 
 ### Local Git and explicit changes
 
-The Git adapter compares `origin/master...HEAD` by default. Set `RSPEC_TIA_DIFF_BASE` to use another base, such as `origin/main`. The base and common ancestor must be available locally; shallow clones may need more history. Supply a locally generated map when using this adapter.
+The Git adapter compares `origin/master...HEAD` by default. Set `RAILS_TIA_DIFF_BASE` to use another base, such as `origin/main`. The base and common ancestor must be available locally; shallow clones may need more history. Supply a locally generated map when using this adapter.
 
 To supply changed paths directly, use a newline-delimited file or standard input:
 
 ```bash
-git diff --name-only HEAD~1 | bundle exec rspec-tia select --changed-files-from -
+git diff --name-only HEAD~1 | bundle exec rails-tia select --changed-files-from -
 ```
 
 This is useful for evaluating predictions against historical changes before enabling selective execution in CI.
@@ -180,7 +182,7 @@ This is useful for evaluating predictions against historical changes before enab
 
 ### Authentication
 
-The GitLab adapter targets GitLab 17+ API v4 and uses `PRIVATE-TOKEN` authentication for MR diffs, pipeline/job discovery, and artifact downloads. Set `RSPEC_TIA_GITLAB_TOKEN` to a personal access token with `read_api`, or an equivalent project/group access token. Its owner needs access to the project's code, merge requests, and CI artifacts (typically Reporter or higher). A separate token is required even within the same project. Deploy tokens are unsupported.
+The GitLab adapter targets GitLab 17+ API v4 and uses `PRIVATE-TOKEN` authentication for MR diffs, pipeline/job discovery, and artifact downloads. Set `RAILS_TIA_GITLAB_TOKEN` to a personal access token with `read_api`, or an equivalent project/group access token. Its owner needs access to the project's code, merge requests, and CI artifacts (typically Reporter or higher). A separate token is required even within the same project. Deploy tokens are unsupported.
 
 Register the token as a masked CI/CD variable. If it is protected, ensure it is available to the MR pipelines that run selection. Missing tokens and API failures produce a nonzero exit status; they are not treated as an empty change list.
 
@@ -197,18 +199,18 @@ ci:
     map_ref: main  # Default: master; set this to your default branch.
     map_pipeline_source: schedule
     map_job_name: rspec-map
-    map_artifact_glob: tmp/rspec_tia/fragments
+    map_artifact_glob: tmp/rails_tia/fragments
 ```
 
 Save the entire `map.fragment_dir` directory as an artifact from each map-generation job. In the selection job, fetch and merge the fragments before selecting specs:
 
 ```bash
-bundle exec rspec-tia map fetch || exit "$?"
-bundle exec rspec-tia select > specs.txt || exit "$?"
+bundle exec rails-tia map fetch || exit "$?"
+bundle exec rails-tia select > specs.txt || exit "$?"
 # Run the selected specs using the Bash script above.
 ```
 
-`map_artifact_glob` accepts a project-relative directory, glob, or fragment file path. The adapter reads matching `.json` and `.json.gz` fragments from job artifact ZIPs. If you override `RSPEC_TIA_FRAGMENT_PATH`, include that file in artifacts and adjust the matching path.
+`map_artifact_glob` accepts a project-relative directory, glob, or fragment file path. The adapter reads matching `.json` and `.json.gz` fragments from job artifact ZIPs. If you override `RAILS_TIA_FRAGMENT_PATH`, include that file in artifacts and adjust the matching path.
 
 Supported job names are a single `map_job_name` or GitLab numeric parallel names such as `rspec-map 1/4`. All nodes must succeed and provide valid, fresh fragments from the same commit. Incomplete or invalid downloads fail and preserve the existing merged map. Other naming formats, including `parallel:matrix`, are unsupported. Ensure each job saves fragments from every process, and propagate RSpec and artifact-upload failures.
 
@@ -216,7 +218,7 @@ When no map fragments are available through the adapter's normal no-map path, `m
 
 ## GitHub Actions integration
 
-Opt in to the GitHub Actions adapter in `.rspec_tia.yml`. Set `map_workflow` to the workflow filename or its numeric ID. `map_event` defaults to `push`.
+Opt in to the GitHub Actions adapter in `.rails_tia.yml`. Set `map_workflow` to the workflow filename or its numeric ID. `map_event` defaults to `push`.
 
 ```yaml
 ci:
@@ -224,7 +226,7 @@ ci:
   github_actions:
     map_workflow: rspec.yml
     map_event: push
-    map_artifact_name: rspec-tia-map
+    map_artifact_name: rails-tia-map
 ```
 
 Save the example below as `.github/workflows/rspec.yml`. Add any services and setup steps your project needs before running RSpec.
@@ -257,14 +259,14 @@ jobs:
       - name: Generate map from the full suite
         if: github.event_name == 'push'
         run: |
-          bundle exec ruby -rrspec_tia/boot -S rspec \
-            --require rspec_tia/formatter --format RspecTia::Formatter
-          bundle exec rspec-tia map merge
+          bundle exec ruby -rrails_tia/boot -S rspec \
+            --require rails_tia/formatter --format RailsTia::Formatter
+          bundle exec rails-tia map merge
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'push'
         with:
-          name: rspec-tia-map
-          path: tmp/rspec_tia/map.json.gz
+          name: rails-tia-map
+          path: tmp/rails_tia/map.json.gz
           if-no-files-found: error
           overwrite: true
 
@@ -272,12 +274,12 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: bundle exec rspec-tia map fetch
+        run: bundle exec rails-tia map fetch
       - name: Run selected specs
         if: github.event_name == 'pull_request'
         shell: bash
         run: |
-          bundle exec rspec-tia select > specs.txt
+          bundle exec rails-tia select > specs.txt
           if [ -s specs.txt ]; then
             mapfile -t specs < specs.txt
             bundle exec rspec "${specs[@]}"
@@ -295,8 +297,8 @@ Outside a PR, or when the matching run or map is unavailable or too old, `map fe
 ## Audit and diagnostics
 
 ```bash
-bundle exec rspec-tia audit --junit tmp/junit --predicted specs.txt
-bundle exec rspec-tia doctor
+bundle exec rails-tia audit --junit tmp/junit --predicted specs.txt
+bundle exec rails-tia doctor
 ```
 
 `audit` compares predictions with JUnit results from a full-suite run and exits with status 1 if a failing spec was omitted. Keep auditing full-suite runs after enabling selection to detect missed failures. `doctor` checks configuration, spec discovery, map freshness, the CI adapter, and static mappings.
@@ -305,11 +307,11 @@ Commands accept `--config PATH` and `--root PATH` to override the configuration 
 
 ## Continuous improvement reports
 
-Set `RSPEC_TIA_REPORT_DIR` in the map-generation, merge, selection and audit jobs to keep a history. Use a dedicated directory outside the map fragment directory. Relative paths resolve from the project root (including `--root`). Reporting is disabled when the variable is unset or empty.
+Set `RAILS_TIA_REPORT_DIR` in the map-generation, merge, selection and audit jobs to keep a history. Use a dedicated directory outside the map fragment directory. Relative paths resolve from the project root (including `--root`). Reporting is disabled when the variable is unset or empty.
 
-Each invocation or RSpec worker writes one `<type>-<report_id>.json` file. Reports use schema version 1. They include a UUID, UTC timestamp, rspec_tia version, commit SHA and available GitHub Actions or GitLab job metadata. Set `CI_NODE_INDEX` from the matrix index on GitHub Actions to identify the shard. Fields without CI metadata are null.
+Each invocation or RSpec worker writes one `<type>-<report_id>.json` file. Reports use schema version 1. They include a UUID, UTC timestamp, `rails_tia_version`, commit SHA and available GitHub Actions or GitLab job metadata. Set `CI_NODE_INDEX` from the matrix index on GitHub Actions to identify the shard. Fields without CI metadata are null.
 
-If saving a history report or its archived map fails, rspec_tia warns on standard error and continues. RSpec can finish writing its other formatter outputs, and the CLI returns the outcome of selection, merge or audit. Published history files use mode `0644` subject to the process umask.
+If saving a history report or its archived map fails, rails_tia warns on standard error and continues. RSpec can finish writing its other formatter outputs, and the CLI returns the outcome of selection, merge or audit. Published history files use mode `0644` subject to the process umask.
 
 | Type | What to compare across runs |
 | --- | --- |
@@ -325,12 +327,12 @@ The merged map is also saved under `maps/<map_id>.json.gz` in the report directo
 Use the selection report from the change being tested. For example, in Bash, starting with a fresh report directory for this job:
 
 ```bash
-export RSPEC_TIA_REPORT_DIR=tmp/rspec_tia/reports
-bundle exec rspec-tia select --changed-files-from changed-files.txt > specs.txt || exit "$?"
-selection=( "$RSPEC_TIA_REPORT_DIR"/select-*.json )
+export RAILS_TIA_REPORT_DIR=tmp/rails_tia/reports
+bundle exec rails-tia select --changed-files-from changed-files.txt > specs.txt || exit "$?"
+selection=( "$RAILS_TIA_REPORT_DIR"/select-*.json )
 [[ ${#selection[@]} == 1 && -f "${selection[0]}" ]] || exit 1
 # Run the full suite and collect its JUnit XML, including results from failing jobs.
-bundle exec rspec-tia audit --selection-report "${selection[0]}" --junit tmp/junit \
+bundle exec rails-tia audit --selection-report "${selection[0]}" --junit tmp/junit \
   --expect-junit shard-1.xml --expect-junit shard-2.xml
 ```
 
@@ -340,15 +342,15 @@ Collect the full suite's XML in a fresh JUnit directory for each run. Audit read
 
 ### Store reports directly in S3
 
-Set `RSPEC_TIA_REPORT_DIR` at job level and use a fresh directory per job. After the producer steps, upload from every worker job and from the merge, selection and audit jobs, including when tests or audit fail. The following GitHub Actions step assumes the AWS CLI and AWS credentials are available and `RSPEC_TIA_S3_URI` names a private bucket or prefix (for example, `s3://my-ci-history/rspec-tia`). Configure credentials in the workflow, for example through [GitHub Actions OIDC](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws).
+Set `RAILS_TIA_REPORT_DIR` at job level and use a fresh directory per job. After the producer steps, upload from every worker job and from the merge, selection and audit jobs, including when tests or audit fail. The following GitHub Actions step assumes the AWS CLI and AWS credentials are available and `RAILS_TIA_S3_URI` names a private bucket or prefix (for example, `s3://my-ci-history/rails-tia`). Configure credentials in the workflow, for example through [GitHub Actions OIDC](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws).
 
 ```yaml
-- name: Store rspec_tia history
+- name: Store rails_tia history
   if: always()
   shell: bash
   run: |
-    dir="${RSPEC_TIA_REPORT_DIR:?}"
-    base="${RSPEC_TIA_S3_URI:?}/${GITHUB_REPOSITORY}"
+    dir="${RAILS_TIA_REPORT_DIR:?}"
+    base="${RAILS_TIA_S3_URI:?}/${GITHUB_REPOSITORY}"
     if [[ -d "$dir" ]]; then
       # Upload the snapshot before records that reference it.
       if [[ -d "$dir/maps" ]]; then
@@ -359,7 +361,7 @@ Set `RSPEC_TIA_REPORT_DIR` at job level and use a fresh directory per job. After
     fi
 ```
 
-Retries of the upload use the same keys. Re-running rspec_tia creates new report IDs, including on matrix jobs with the same job name. The same JSON files can be imported into an analytics database using `report_id` as the unique key. CI owns storage credentials and retention.
+Retries of the upload use the same keys. Re-running rails_tia creates new report IDs, including on matrix jobs with the same job name. The same JSON files can be imported into an analytics database using `report_id` as the unique key. CI owns storage credentials and retention.
 
 ## Limitations
 

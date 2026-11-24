@@ -1,10 +1,10 @@
-require 'rspec_tia'
-# Load these dependencies only for the CLI; lib/rspec_tia.rb omits them
+require 'rails_tia'
+# Load these dependencies only for the CLI; lib/rails_tia.rb omits them
 # to avoid introducing unnecessary dependencies into the formatter.
-require 'rspec_tia/audit'
-require 'rspec_tia/ci'
-require 'rspec_tia/junit_report'
-require 'rspec_tia/metrics'
+require 'rails_tia/audit'
+require 'rails_tia/ci'
+require 'rails_tia/junit_report'
+require 'rails_tia/metrics'
 
 require 'fileutils'
 require 'tmpdir'
@@ -20,7 +20,7 @@ module SpecSupport
   # Create real files in a temporary directory for code that checks file existence,
   # such as static mappings and prediction.
   def with_project(files)
-    Dir.mktmpdir('rspec_tia') do |root|
+    Dir.mktmpdir('rails_tia') do |root|
       files.each do |path|
         full = File.join(root, path)
         FileUtils.mkdir_p(File.dirname(full))
