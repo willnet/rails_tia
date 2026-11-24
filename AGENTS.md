@@ -1,37 +1,34 @@
-# エージェント・開発者向け指針
+# Contributor and agent guidelines
 
-## 文書の役割
+## Documentation
 
-- `README.md`: 利用者向けの英語ドキュメント。導入、設定、操作、CI連携、制限事項を記載する。
-- `docs/design.md`: 現状の設計と、その判断に至った背景を記載する。
-- `AGENTS.md`: リポジトリを変更する際の作業指針を記載する。
+Write all repository documentation in English. Use English for commit messages and for pull request titles and descriptions.
 
-利用者に影響する動作・設定を変更したらREADMEを更新する。設計判断を変更したら設計文書も更新し、背景をREADMEへ混在させない。
+- `README.md` covers installation, configuration, usage, CI integration, and limitations for users.
+- `docs/design.md` explains the current design and the reasons behind it.
+- `AGENTS.md` gives contributors and agents instructions for changing the repository.
 
-## 開発と確認
+Update the README when a change affects user-facing behavior or configuration. When a design decision changes, document the decision and its rationale in the design notes.
 
-Ruby 3.3以上を使用する。`bundle install` で依存を用意し、`bundle exec rake spec` でテストを実行する。CIではRuby 3.3、3.4、4.0で検証する。テスト用のRails・ActiveRecord・SQLite依存はGemfileを参照する。
+## Development and verification
 
-変更した挙動に関連するspecを確認し、コード変更では関連テストと必要な全体チェックを実行する。文書のみの変更では、実装との整合性、相対リンク、コマンドと設定例を確認する。
+Use Ruby 3.3 or later. Install dependencies with `bundle install` and run the specs with `bundle exec rake spec`. CI tests Ruby 3.3, 3.4, and 4.0. See the Gemfile for the Rails, ActiveRecord, and SQLite dependencies used in tests.
 
-## 変更時に守る制約
+For code changes, review the specs for the affected behavior, run them, and run any necessary suite-wide checks. For documentation-only changes, check the text against the implementation and verify relative links, commands, and configuration examples.
 
-詳細な理由は [設計方針](docs/design.md) を読むこと。
+## Design constraints
 
-- 計測開始はアプリのロード前とし、`lines: true` とクリアによるspecファイル単位の記録を維持する。
-- context・suite hookの帰属、eager load時のクリア、ActiveRecordによる補完を考慮する。formatterの変更ではロード順とhookのテストも確認する。
-- 正常な選択0件、全実行への切り替え、処理失敗を区別する。差分や認証の失敗を空配列へ変換しない。
-- 並列マップでは全ノード・全プロセスの断片と整合性を確認する。取得失敗によって既存の統合マップを破壊しない。
-- `select` の標準出力は1行1パス、または全実行トークン1行とする。診断情報は標準エラーへ出力する。
-- 全実行との比較によるauditを維持し、選択結果だけで予測精度を判断しない。
+See the [design notes](docs/design.md) for the reasons behind these constraints.
 
-## コミットメッセージ
+- Start coverage before the application loads. Keep `lines: true` and clear coverage at spec file boundaries to record dependencies per spec file.
+- Account for context and suite hook attribution, clearing coverage after eager loading, and dependencies detected through ActiveRecord. When changing the formatter, check the load-order and hook specs.
+- Distinguish a successful empty selection, a full-run fallback, and an error. Propagate errors when authentication or diff retrieval fails.
+- For parallel maps, check that the fragments from all nodes and processes are present and consistent. Preserve the existing merged map if retrieval fails.
+- Keep `select` output to one path per line or a single line containing the full-run token. Send diagnostics to standard error.
+- Audit predictions against full-suite results. Failures in omitted specs are only observable when those specs run.
 
-- コミットメッセージはできるだけ詳しく書く。
-- コードから読み取れる変更内容の羅列より、コードから読み取れない背景を優先して記載する。
-- なぜこの変更が必要になったのかを書く。
-- プルリクエストを作成するに至った理由を書く。
-- 関連する Issue、PR、バグ報告、設計上の制約があれば含める。
-- コミットメッセージは最終的な変更とその背景に絞り、試行錯誤の経緯や採用しなかった機能・案は原則として書かない。
-- ただし、読み手が自然に疑問に思う代替案を採用しなかった理由や、将来の判断に必要な制約がある場合は、その理由を簡潔に書く。
-- 1行目は要約にする。本文には背景、理由、注意点を書く。
+## Commit messages
+
+Use the first line to summarize the change. In the body, explain why the change and the pull request were needed. Give readers the background and caveats they cannot infer from the diff. Include relevant issues, pull requests, bug reports, and design constraints.
+
+Focus on the final change and its rationale. Omit the history of experiments and discarded ideas unless a reader is likely to ask about an alternative or a constraint will matter for a future decision. In those cases, explain the reason briefly.

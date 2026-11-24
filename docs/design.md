@@ -1,39 +1,39 @@
-# 設計方針
+# Design decisions
 
-この文書は実装の背景と維持すべき設計判断をまとめる。利用方法と設定は [README](../README.md)、作業時の指針は [AGENTS.md](../AGENTS.md) を参照。
+These notes explain why rspec_tia works the way it does and which behaviors future changes need to preserve. See the [README](../README.md) for usage and configuration and the [contributor guidelines](../AGENTS.md) for instructions on changing the repository.
 
-## 目的と構成
+## Purpose and components
 
-RSpecの全実行からspecファイル単位の依存マップを生成し、変更ファイルから影響するspecを選ぶ。デフォルトブランチでのマップ生成と、変更ごとの予測を分離する。
+A full RSpec run on the default branch builds a dependency map at spec file granularity. Each change pipeline uses that map to select the spec files affected by its changed files.
 
-- `boot.rb` / `formatter.rb`: アプリのロード前に計測を開始し、specとhookの依存を断片に記録する。
-- `rails_support.rb`: Rails・ActiveRecord固有の依存を補完する。
-- `action_view_support.rb`: ActionViewの描画通知からテンプレートの依存を補完する。
-- `described_class_support.rb`: 実行したexampleの明示的な対象と祖先の定義ファイルを補完する。
-- `map.rb`: マップの保存、読み込み、統合、鮮度判定を担う。
-- `predictor.rb` / `static_mapping.rb` / `fallback.rb`: 依存の逆引き、静的補完、全実行への切り替えを担う。
-- `ci/`: 変更情報とマップ断片を取得する。CLIは入出力と各処理の接続を担う。
-- `audit.rb` / `junit_report.rb` / `metrics.rb`: 予測の検証と削減効果の観測を担う。
+- `boot.rb` starts coverage before the application loads. `formatter.rb` writes spec and hook dependencies to map fragments.
+- `rails_support.rb` supplements coverage with dependencies observed through Rails and ActiveRecord.
+- `action_view_support.rb` records template dependencies from ActionView rendering notifications.
+- `described_class_support.rb` records the files that define an executed example's described class and its ancestors.
+- `map.rb` saves, loads, and merges maps and checks their freshness.
+- `predictor.rb`, `static_mapping.rb`, and `fallback.rb` handle reverse dependency lookup, static mappings, and full-run decisions.
+- The adapters in `ci/` retrieve change information and map fragments. The CLI connects these operations and handles input and output.
+- `audit.rb`, `junit_report.rb`, and `metrics.rb` validate predictions and measure how much test execution a selection can save.
 
-## カバレッジの方式と粒度
+## Coverage collection and granularity
 
-`Coverage.start(lines: true)` をアプリのロード前に呼び、specファイルの切り替わりで `Coverage.result(stop: false, clear: true)` を取得する。取得後にクリアすることで、その区間で実行されたファイルを依存として記録し、累積結果の差分計算を不要にする。
+Call `Coverage.start(lines: true)` before loading the application. At spec file boundaries, read coverage with `Coverage.result(stop: false, clear: true)`. Clearing the counters after each read lets the formatter identify files executed in that interval without comparing cumulative snapshots.
 
-`oneshot_lines` は使わない。クリアしても一度記録された行が再記録されず、最初に通ったspecだけが依存を持つマップになってしまう。
+With `oneshot_lines`, clearing the results does not make Ruby record a previously executed line again. The map would attribute that line only to the first spec that ran it.
 
-Ruby 3.4.12 と Bootsnap 1.21.1 の組み合わせでは、Coverage開始後に `bootsnap/setup` を読み込むと命令列のコンパイルキャッシュの初期化が失敗する。Savannaのモデル・リクエスト・system specでは、コンパイルキャッシュだけを無効にした場合とBootsnap全体を無効にした場合で同一のマップを得られた。計測用の `rspec_tia/boot` で `DISABLE_BOOTSNAP_COMPILE_CACHE` を設定し、ロードパスのキャッシュは利用できるようにする。
+On Ruby 3.4.12 with Bootsnap 1.21.1, loading `bootsnap/setup` after starting coverage causes initialization of the instruction sequence compile cache to fail. In Savanna's model, request, and system specs, disabling only the compile cache produced the same map as disabling Bootsnap entirely. The coverage entry point, `rspec_tia/boot`, sets `DISABLE_BOOTSNAP_COMPILE_CACHE` so the load path cache remains available.
 
-粒度はexample単位ではなくspecファイル単位とする。example単位では取得回数が大幅に増える。旧READMEに記録された実測では、1,966 specファイルのRailsアプリで1回25〜31ms、合計約53秒だった。この数値は特定環境の観測であり、性能保証ではない。
+Reading coverage for every example would substantially increase the number of reads. An earlier README recorded a Rails run with 1,966 spec files. Collecting coverage per spec file took 25–31 ms per read and about 53 seconds in total. Those timings describe that particular environment.
 
-## Hookと起動時の依存
+## Hook attribution and startup dependencies
 
-groupの開始・終了通知を利用し、`before/after(:context)`（`:all`を含む）もspecへ帰属させる。`before/after(:suite)` の依存は全specへ追加する。テストやhookに失敗した実行は、古い生成時刻でマップを保存し、予測時に全実行へ切り替える。
+Group start and finish notifications let the formatter attribute `before/after(:context)` hooks, including their `:all` aliases, to the spec that runs the group. Dependencies from `before/after(:suite)` apply to every spec. If a test or hook fails, the formatter saves the map with a stale timestamp so prediction falls back to a full run.
 
-suite開始時に一度カバレッジをクリアする。Railsのeager loadで実行された全クラスの定義行を残すと、全specが全ファイルに依存してしまうためである。
+The formatter clears coverage once at suite start. Keeping the class definition lines executed during Rails eager loading would make every spec appear to depend on every file.
 
-## ActiveRecordによる補完
+## ActiveRecord dependencies
 
-次のようなモデルはロード後に実行される行を持たず、実行時の利用をカバレッジだけでは捉えられない。
+A model can be used after loading without executing another line of its definition. Coverage alone can miss uses of a model such as this one:
 
 ```ruby
 class Account < ApplicationRecord
@@ -41,60 +41,64 @@ class Account < ApplicationRecord
 end
 ```
 
-`sql.active_record` と `instantiation.active_record` を購読し、モデル名を `Module.const_source_location` で定義ファイルに変換して依存へ追加する。旧READMEのあるRailsアプリでの実測では、依存エッジが402から594へ約48%増えた。この観測は、カバレッジだけではモデル依存を取りこぼすことを示す。Rails関連の設定は、補完の入れ忘れで精度が静かに落ちないよう既定で有効にする。
+The collector subscribes to `sql.active_record` and `instantiation.active_record`. It resolves each model name to its definition file with `Module.const_source_location` and adds that dependency. In one Rails application measured in an earlier README, this increased the edge count from 402 to 594, about 48%. Rails tracking is enabled by default so an omitted setting does not silently drop model dependencies.
 
-## ActionViewによる補完
+## ActionView dependencies
 
-Issue #27の共有partial・layoutは、ファイル名から利用元画面を逆算する静的ルールだけでは網羅しにくい。ActionViewの描画通知の`identifier`を既存のMapへ追加し、実際に同じテンプレートを利用した各specへ依存を記録する。`rails.action_view`は既定で有効とし、ActiveRecordとは独立して無効化できる。Rails全体が無効なら両方を購読しない。既存マップの形式・Predictor・Coverageの粒度は変えない。
+Issue #27 describes shared partials and layouts whose consumers are difficult to infer from filenames. The collector takes the `identifier` from an ActionView rendering notification and adds the template to the existing map for each spec that renders it. This uses the existing map format, predictor, and coverage granularity. The `rails.action_view` setting defaults to enabled and can be disabled independently of ActiveRecord tracking. Disabling Rails support turns off both subscriptions.
 
-Rails 7.2.4の実レンダリングで`render_template`・`render_partial`・`render_collection`・`render_layout`の`.action_view`通知を確認した。partial専用layoutには`render_layout`通知がないため、各Templateの描画で発火する`!render_template.action_view`も購読する。コンパイルへのパッチではなく描画通知を用い、コンパイル済みテンプレートの後続specへの帰属を維持する。`layout` payloadは仮想名のためファイルパスとして解釈しない。絶対`identifier`を正規化し、実在し、symlinkの参照先もプロジェクト内のファイルだけをroot相対パスでSetへ蓄積する。HAMLおよび他Rails版の動作は未検証とする。
+Rendering tests on Rails 7.2.4 confirmed the `render_template.action_view`, `render_partial.action_view`, `render_collection.action_view`, and `render_layout.action_view` notifications. Layouts specific to partials do not emit `render_layout`, so the collector also subscribes to `!render_template.action_view`, which fires when each template renders. Observing rendering lets later specs acquire dependencies even after compilation. The `layout` payload is a virtual name. The collector uses the absolute `identifier` to find the file, verifies that the file exists and resolves inside the project, and stores a root-relative path in a set. HAML and other Rails versions remain unverified.
 
-プロジェクト内のsymlinkを通じて描画したテンプレートは、通知のidentifierと解決した実体の両方を、それぞれroot・実rootからの相対パスで記録する。通知の別名だけを記録すると参照先ファイルの変更で利用元specを選べず、実体だけではsymlink自体の変更を取りこぼすためである。通常ファイルで両者が同じパスになる場合はSetで重複を除く。プロジェクト外を指すsymlinkは従来どおり両方とも記録しない。
+When a template is rendered through an in-project symlink, the collector records both the identifier relative to the project root and the resolved target relative to the real root. A change to either the link or the target can affect its consumers. The set deduplicates the paths when they coincide. A symlink that points outside the project contributes neither path.
 
-Formatterのstartでspecロード後に購読する。boot由来の蓄積を捨て、Coverageと同じflush境界で取り出すため、context hook・shared examplesは利用元spec、suite hookは全specへ帰属する。AR・ActionView双方の購読トークンを保持し、多重購読を防ぎ、stopのensureでマップ保存失敗時も解除する。
+The formatter subscribes in `start`, after spec loading, discards dependencies accumulated during boot, and flushes notifications at the same boundaries as coverage. Context hooks and shared examples contribute to the consuming spec. Suite hooks contribute to every spec. The formatter retains the ActiveRecord and ActionView subscription tokens to prevent duplicate subscriptions. An `ensure` in `stop` unsubscribes even when saving the map fails.
 
-Rails 7.2.4ではcollectionのキャッシュヒットでも主partialのidentifierは通知される一方、fragment・collection内で省略された子partialやpartial専用layoutは描画通知へ現れない。別specのキャッシュ内容から依存を推測して転記することはせず、この制限を実レンダリングで検証する。入れ子の依存に頼る場合はマップ生成時に描画キャッシュを無効化するか、静的ルールまたは全実行パスを設定する。新規・未描画テンプレートも引き続き静的補完の対象とし、全実行とのauditを維持する。
+On Rails 7.2.4, a collection cache hit still reports its primary partial's identifier. A fragment or collection cache hit can skip rendering a nested partial or its layout, so no rendering notification identifies those files. The rendering tests cover this limit. The collector does not copy dependencies from another spec that populated the cache. Applications that rely on nested dependencies can disable rendering caches during map generation, add static rules, or configure full-run paths. Static mappings still cover new or unrendered templates. Continue auditing selection against full-suite runs.
 
-## described_classによる補完
+## Dependencies from `described_class`
 
-Issue #26の定数・宣言だけを持つクラスは、suite開始時のクリア後にCoverageへ現れず、一般のRubyクラスやSQLを使わないモデルにはActiveRecord通知も届かない。実行したexampleのgroupから`described_class`を取得し、名前付きClass/Module自身と`ancestors`の定義ファイルを補完する。Railsに依存せず既定で有効にし、`described_class.enabled: false`で個別に無効化できる。
+Issue #26 describes classes that contain only constants or declarations. Once the suite clears coverage, using such a class can leave no coverage hits. Plain Ruby classes and models used without SQL may also produce no ActiveRecord notifications. For each executed example, the collector reads the group's `described_class` and adds definition files for the named class or module and its `ancestors`. This works independently of Rails and is enabled by default. Set `described_class.enabled: false` to disable it.
 
-example開始時に既存のspec切り替え・flushを完了してから、利用元の最上位groupのspecへ`Map#add`する。shared examplesの定義元へ帰属させず、同一specの複数groupは和集合になる。Coverageの取得回数・specファイル単位の粒度・Mapの形式は変更しない。context hookの帰属は引き続きCoverage側で検証する。
+At example start, the formatter completes the usual spec switch and coverage flush before calling `Map#add` for the runnable top-level group's spec. Shared examples contribute to the consuming spec, and contributions from multiple groups in one spec file form a union. The existing coverage reads, spec file granularity, and map format also serve this collector. Coverage tests continue to verify context hook attribution.
 
-定数名の各階層を継承探索なしで辿り、autoloadが登録されていたら解決を中止する。最後の定数が対象オブジェクトと同一であることを確認して`const_source_location`を取得し、プロジェクト内の実ファイルだけを相対パスで記録する。文字列・匿名・組み込み・削除済み・外部の対象は記録しない。キャッシュはformatterの生存期間に限定し、クラスオブジェクトの同一性をキーとする。同名クラスの再定義で別オブジェクトの結果を流用しない。同じ対象の多数のexampleでは祖先列挙と定義解決を再利用し、共通祖先の定義解決も再利用する。
+The collector resolves each part of the constant name without searching inherited constants. It stops if it encounters a registered autoload and checks that the final constant is the original object before looking up its definition with `const_source_location`. It records relative paths only for real files inside the project. Strings, anonymous objects, built-ins, removed constants, and external definitions contribute no paths.
 
-この補完は最初の利用時点の祖先と定数の定義位置を扱う。実行途中で同一オブジェクトへ追加された祖先、複数ファイルによる再オープンの全定義、実行されない動的依存の網羅は保証しない。静的マッピング・AR補完・全実行とのauditを引き続き併用する。
+Each formatter caches results by class object identity for its own lifetime. Repeated examples can reuse the ancestor list and definition lookups for a target, and different targets can reuse lookups for common ancestors. Redefining a class under the same name gives it a different object identity and a separate cache entry.
 
-## 選択と安全側への切り替え
+The cache reflects the ancestors and definition locations at first use. It can miss ancestors added later to the same object, definitions spread across files that reopen a class, and dynamic dependencies on paths that never execute. Continue using static mappings, ActiveRecord tracking, and full-suite audits alongside this collector.
 
-選択結果は、マップの逆引き・静的マッピング・変更されたspec自身の和集合とする。削除やリネームにより存在しなくなったspecは除外し、RSpecへ無効なパスを渡さない。
+## Spec selection and full-run fallback
 
-マップがない・古い、MRではない、変更が大きい、全実行指定がある場合は全実行にする。依存gem、CI定義、migration、外部データ等の変更は、利用側が全実行パスへ設定する。テンプレートや新規ファイル等は静的マッピングで補完する。
+The predictor takes the union of the map's reverse lookup, static mappings, and changed spec files themselves. It filters out spec paths that disappeared after a deletion or rename so RSpec receives existing paths.
 
-予測の正常な0件と取得失敗を区別する。認証、差分取得、artifact取得のエラーを空の変更一覧へ変換すると、必要なテストを実行せず成功する危険があるため、エラーとして返す。
+A missing or stale map, a pipeline outside a merge request, a large change, or an explicit full-run request triggers the full suite. The consuming project configures full-run paths for changes such as gem dependencies, CI definitions, migrations, and external data. Static mappings can cover templates and new files.
 
-## 並列マップとartifactの整合性
+A successful prediction can select zero specs. Authentication failures and errors retrieving diffs or artifacts must propagate as errors. Treating them as an empty change list could let a job succeed while skipping required tests.
 
-各プロセスは個別の断片を保存する。GitLabではartifact ZIP内の断片を列挙し、ファイル名やプロセス数を推測しない。数値並列ジョブでは全ノードの成功と連番、断片の存在・形式・鮮度・コミットの一致を検証する。取得失敗時は既存の統合マップを維持する一方、正常なマップ不在では既存マップを削除し、全実行へ切り替える。
+## Parallel maps and artifact integrity
 
-GitHub ActionsではPRのマージコミットの第1親を差分とマップの基準にする。PRのheadを直接チェックアウトした場合は、イベントのbase SHAとの共通祖先を使う。ブランチの先端はCI開始後にも進むため、取得元は差分の基準と同じコミットの成功runに限定する。マップ生成側で全ジョブの断片を揃えて統合し、取得側では1個の統合済みマップとして検証する。取得したマップは生成側の断片があるディレクトリの直下を避け、同じワークスペースで後から生成するマップへの混入を防ぐ。
+Each process saves its own fragment. The GitLab adapter enumerates fragments in the artifact ZIP so it can handle the filenames and process counts used by the job. For numeric parallel jobs, it checks that all nodes succeeded, their indices are consecutive, and their fragments are present, valid, fresh, and from the same commit. A retrieval error preserves the existing merged map. When retrieval succeeds and no map is available, the adapter workflow removes the old map so selection falls back to the full suite.
 
-対応する成功runがない場合、artifactが見つからない場合、期限切れが確認できた場合は通常のマップ不在として扱う。ダウンロード時の404はアクセス権の不足でも返り得るため、一覧を再取得し、不在または期限切れを確認できた場合に限り全実行へ切り替える。
+For a GitHub Actions PR merge checkout, the first parent of the merge commit is the baseline for both the diff and the map. A direct PR head checkout uses its common ancestor with the target commit from the event. The target branch can advance while CI is running, so the adapter looks for a successful workflow run at that exact baseline commit.
 
-GitHub Actionsアダプタは明示的に設定した場合に有効になる。`auto`を使って既にGitHub Actions上でGitアダプタを実行している利用者は、比較方法やチェックアウト設定をそのまま使える。
+The workflow that generates the map collects fragments from all workers and uploads one merged map. The fetching job validates that map and saves it in a subdirectory so a later `map merge` in the same workspace cannot mix it with newly generated fragments.
 
-GitLabとGitHub Actionsのartifactダウンロードは署名付きURLにリダイレクトされることがあるため、HTTPクライアントはリダイレクトを辿る。署名付きURLの配信先へAPIトークンを渡さないよう、別オリジンへの転送では認証ヘッダーを外す。エラーには要求元のURLだけを表示し、署名付きURLをCIログへ残さない。
+A missing successful run, a missing artifact, or a confirmed expiry triggers a full run. A download `404` can also indicate insufficient access, so the adapter lists artifacts again and falls back to the full suite only when that listing confirms the artifact is missing or expired.
 
-## 継続的な検証
+The GitHub Actions adapter requires explicit configuration. Existing GitHub Actions workflows that use the generic Git adapter through `auto` can keep their checkout and diff settings.
 
-選択実行だけでは、予測から漏れた失敗を観測できない。全実行のJUnit結果と予測を `audit` で比較し続けることを前提とする。過去の変更一覧を入力するオフライン検証も、導入前の削減率と取りこぼしの評価に使える。
+GitLab and GitHub Actions can redirect artifact downloads to signed URLs. The HTTP client follows redirects and strips authentication headers when the origin changes, preventing the API token from reaching the signed URL's host. Error messages show only the original request URL to keep signed URLs out of CI logs.
 
-## 正解付きRailsアプリによる回帰検証
+## Ongoing validation
 
-`test_apps/rails_app` は、人が説明できる依存集合を持つ小さな実Railsアプリとする。spec探索の既定値へfixtureのspecが混入しないよう、`spec/fixtures` ではなく `test_apps` 配下に置く。ルートのbundleを共有し、gemの配布対象には含めない。
+Selective runs cannot reveal failures in specs they omit. Use `audit` to compare predictions with JUnit results from full-suite runs on an ongoing basis. Before enabling selective execution, offline checks using historical lists of changed files can help estimate savings and evaluate missed failures.
 
-収集方式を比較する前提として、収集マップの正解とPredictorの選択結果の正解を手書きで分けて保持する。専用ソースの依存集合を完全一致で検証し、欠落と無関係なspecへの混入をともに検出する。suite hookの全spec集合は生成マップではなくfixtureのファイル一覧から求める。テンプレートの予測は実行時の依存を除去したマップでも検証し、静的ルールの成果をCoverageの成果と取り違えない。
+## Regression tests with a Rails application
 
-モデルはsuite開始前にロードし、通常・eager load・AR補完なしの条件で初回ロードによるCoverageと補完の効果を区別する。共通のデータ初期化にはモデル名付きSQLを使わず、初期化処理が全specへモデル依存を付けることを避ける。
+`test_apps/rails_app` is a small Rails application with dependency sets that can be checked by hand. Keeping it under `test_apps` rather than `spec/fixtures` keeps its specs out of default spec discovery. It shares the repository's root bundle and is excluded from the distributed gem.
 
-子プロセスは一時コピー上で動かし、毎回独立したDB・断片・環境を使う。通常・eager loadで定義順と固定seedを検証し、一つの実行から複数ケースを確認して起動回数を抑える。不具合注入では正常状態のマップを保持し、変更後の全実行と選択実行の双方で構造化されたassertion失敗を確認する。選択実行だけで精度を評価せず、起動例外などを不具合検出として数えない。このアプリは正確さの回帰検証であり、性能評価の代用とはしない。
+To compare collectors, the fixture keeps separate handwritten expectations for the collected map and for the predictor's selected specs. Exact dependency sets for dedicated source files catch both missing consumers and unrelated specs added by mistake. For suite hooks, the expected set of all specs comes from the fixture's file list, independently of the map. Template selection also runs against a map with runtime dependencies removed to isolate the contribution of static rules.
+
+The fixture loads its model before the suite starts. Comparing normal loading, eager loading, and runs with ActiveRecord tracking disabled shows which dependencies come from executing the model definition on first load and which come from the ActiveRecord collector. Shared data setup avoids SQL carrying a model name so setup alone cannot give every spec a model dependency.
+
+Each child process runs a temporary copy with its own database, map fragments, and environment. Normal and eager-loading runs exercise definition order and fixed seeds. Each run checks several cases to limit startup costs. Mutation tests retain the map from the passing baseline, then check structured assertion failures in both the full and selected runs after the change. This ensures that a startup exception cannot count as detecting the injected fault. The fixture measures correctness. Performance needs to be evaluated separately.
