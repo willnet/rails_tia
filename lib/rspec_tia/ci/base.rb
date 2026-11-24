@@ -27,6 +27,7 @@ module RspecTia
       def merge_request? = raise(NotImplementedError)
       def labels = []
       def commit_message = nil
+      def map_download_dir = @config.map_fragment_dir
 
       # Download map fragments to dest_dir and return their paths.
       def fetch_map_fragments(_dest_dir)

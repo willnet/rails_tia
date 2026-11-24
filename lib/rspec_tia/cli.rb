@@ -44,7 +44,7 @@ module RspecTia
         warn "Unknown command: #{command}\n\n#{USAGE}"
         1
       end
-    rescue Ci::Gitlab::AuthenticationError, Http::Error, Ci::Git::CommandError, Ci::UnknownAdapterError,
+    rescue Ci::Gitlab::AuthenticationError, Ci::GithubActions::Error, Http::Error, Ci::Git::CommandError, Ci::UnknownAdapterError,
            Ci::Base::UnsupportedError, Map::FormatError, Errno::ENOENT => e
       warn "[rspec_tia] #{e.message}"
       1
@@ -102,8 +102,9 @@ module RspecTia
         parser.on('--[no-]merge', 'Merge after downloading (default: enabled)') { |v| @options[:merge] = v }
       end
 
-      dest = @options[:dest] || config.map_fragment_dir
-      fragments = Ci.build(config).fetch_map_fragments(dest)
+      adapter = Ci.build(config)
+      dest = @options[:dest] || adapter.map_download_dir
+      fragments = adapter.fetch_map_fragments(dest)
       if fragments.empty?
         # Ensure even a reused workspace falls back to a full run when no map is available.
         File.delete(config.map_path) if File.exist?(config.map_path)

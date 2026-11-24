@@ -19,8 +19,7 @@ module RspecTia
       end
 
       def changed_files
-        output = capture('git', 'diff', '--name-only', '--no-renames', '-z', "#{base}...HEAD")
-        output.split("\0")
+        changed_paths("#{base}...HEAD")
       end
 
       def commit_message
@@ -28,6 +27,10 @@ module RspecTia
       end
 
       private
+
+      def changed_paths(revision)
+        capture('git', 'diff', '--name-only', '--no-renames', '-z', revision).split("\0")
+      end
 
       def base
         ENV['RSPEC_TIA_DIFF_BASE'] || DEFAULT_BASE

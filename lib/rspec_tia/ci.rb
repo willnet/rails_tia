@@ -1,11 +1,13 @@
 require 'rspec_tia/ci/base'
 require 'rspec_tia/ci/gitlab'
 require 'rspec_tia/ci/git'
+require 'rspec_tia/ci/github_actions'
 
 module RspecTia
   module Ci
     ADAPTERS = {
       'gitlab' => Gitlab,
+      'github_actions' => GithubActions,
       'git' => Git,
     }.freeze
 

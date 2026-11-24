@@ -23,7 +23,7 @@ RSpec.describe 'map fetch後の予測' do
   end
 
   before do
-    @adapter = instance_double(RspecTia::Ci::Base)
+    @adapter = instance_double(RspecTia::Ci::Base, map_download_dir: @config.map_fragment_dir)
     allow(RspecTia::Ci).to receive(:build).and_return(@adapter)
     allow_any_instance_of(RspecTia::Cli).to receive(:warn)
   end
