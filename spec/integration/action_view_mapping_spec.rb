@@ -9,7 +9,7 @@ RSpec.describe 'ActionView runtime dependencies' do
   ].each do |options, enabled|
     it "honors rails=#{options.inspect} after spec-time Rails loading without static mappings" do
       RailsAppRunner.with_app(mode: :normal) do |app|
-        path = File.join(app.root, '.rspec_tia.yml')
+        path = File.join(app.root, '.rails_tia.yml')
         config = YAML.safe_load_file(path).merge('rails' => options, 'static_mapping' => [])
         File.write(path, YAML.dump(config))
         map = app.run.map
@@ -18,7 +18,7 @@ RSpec.describe 'ActionView runtime dependencies' do
         # Exercise both persistence and multi-fragment merge before predicting from template paths.
         saved = File.join(app.root, 'tmp/roundtrip.json.gz')
         map.dump(saved)
-        map = RspecTia::Map.merge_files([saved, saved])
+        map = RailsTia::Map.merge_files([saved, saved])
         sources.each do |source|
           expect(map.specs_for(source)).to match_array(expected)
           prediction = app.predict(map, [source])
@@ -32,7 +32,7 @@ RSpec.describe 'ActionView runtime dependencies' do
 
   it 'selects both consumers for changes to an internal symlink or its target without static mappings' do
     RailsAppRunner.with_app(mode: :normal) do |app|
-      config_path = File.join(app.root, '.rspec_tia.yml')
+      config_path = File.join(app.root, '.rails_tia.yml')
       config = YAML.safe_load_file(config_path).merge('static_mapping' => [])
       File.write(config_path, YAML.dump(config))
       target = 'app/views/shared/_navigation_target.html.erb'

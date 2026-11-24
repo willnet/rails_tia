@@ -1,8 +1,10 @@
 # Design decisions
 
-These notes explain why rspec_tia works the way it does and which behaviors future changes need to preserve. See the [README](../README.md) for usage and configuration and the [contributor guidelines](../AGENTS.md) for instructions on changing the repository.
+These notes explain why rails_tia works the way it does and which behaviors future changes need to preserve. See the [README](../README.md) for usage and configuration and the [contributor guidelines](../AGENTS.md) for instructions on changing the repository.
 
 ## Purpose and components
+
+Rails applications are the project's focus. The name leaves room to support other Rails test runners, such as Minitest.
 
 A full RSpec run on the default branch builds a dependency map at spec file granularity. Each change pipeline uses that map to select the spec files affected by its changed files.
 
@@ -21,7 +23,7 @@ Call `Coverage.start(lines: true)` before loading the application. At spec file 
 
 With `oneshot_lines`, clearing the results does not make Ruby record a previously executed line again. The map would attribute that line only to the first spec that ran it.
 
-On Ruby 3.4.12 with Bootsnap 1.21.1, loading `bootsnap/setup` after starting coverage causes initialization of the instruction sequence compile cache to fail. In Savanna's model, request, and system specs, disabling only the compile cache produced the same map as disabling Bootsnap entirely. The coverage entry point, `rspec_tia/boot`, sets `DISABLE_BOOTSNAP_COMPILE_CACHE` so the load path cache remains available.
+On Ruby 3.4.12 with Bootsnap 1.21.1, loading `bootsnap/setup` after starting coverage causes initialization of the instruction sequence compile cache to fail. In Savanna's model, request, and system specs, disabling only the compile cache produced the same map as disabling Bootsnap entirely. The coverage entry point, `rails_tia/boot`, sets `DISABLE_BOOTSNAP_COMPILE_CACHE` so the load path cache remains available.
 
 Reading coverage for every example would substantially increase the number of reads. An earlier README recorded a Rails run with 1,966 spec files. Collecting coverage per spec file took 25–31 ms per read and about 53 seconds in total. Those timings describe that particular environment.
 
@@ -105,7 +107,7 @@ Each child process runs a temporary copy with its own database, map fragments, a
 
 ## CI run history
 
-When a job sets `RSPEC_TIA_REPORT_DIR`, the formatter and CLI write a JSON report for each operation. The consuming CI workflow authenticates to its storage provider and transfers the files, so the gem needs no cloud SDK or CI artifact service. Each report has a UUID and is published by renaming a temporary file. Parallel jobs can upload to the same destination without filename collisions, and retrying an upload reuses the same key.
+When a job sets `RAILS_TIA_REPORT_DIR`, the formatter and CLI write a JSON report for each operation. The consuming CI workflow authenticates to its storage provider and transfers the files, so the gem needs no cloud SDK or CI artifact service. Each report has a UUID and is published by renaming a temporary file. Parallel jobs can upload to the same destination without filename collisions, and retrying an upload reuses the same key.
 
 The SHA-256 digest of the uncompressed map JSON identifies the map used for prediction. Maps from the same commit can differ in their dependencies or generation time. Hashing the JSON also works with existing maps and preserves their IDs across recompression. A merge archives the map under its ID and records the IDs of its fragments so a prediction can be traced back to the workers' timings and tracking settings. Timings use a monotonic clock and follow the existing coverage read and clear boundaries.
 
@@ -113,4 +115,4 @@ Passing the selection report to `audit` carries the prediction's UUID into the a
 
 For parallel suites, the caller can supply the expected XML paths relative to the JUnit directory. Audit records whether every expected file could be parsed as JUnit and whether the inputs identify the spec for every failure. All shards can arrive even when a failing testcase has no file path. Without an expected file list, completeness is unknown. Invalid audit inputs produce a null list of missed specs so they can be excluded from missed-failure counts.
 
-If saving optional history fails, rspec_tia warns on standard error so other RSpec formatters can finish writing JUnit and each command can return its primary result. Failure to save the working map or read a prediction supplied as audit input still fails the operation.
+If saving optional history fails, rails_tia warns on standard error so other RSpec formatters can finish writing JUnit and each command can return its primary result. Failure to save the working map or read a prediction supplied as audit input still fails the operation.

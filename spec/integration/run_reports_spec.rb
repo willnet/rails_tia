@@ -1,6 +1,6 @@
 require 'open3'
 require 'rbconfig'
-require 'rspec_tia/cli'
+require 'rails_tia/cli'
 
 RSpec.describe 'CI run reports' do
   around do |example|
@@ -13,7 +13,7 @@ RSpec.describe 'CI run reports' do
 
   let(:env) do
     {
-      'RSPEC_TIA_REPORT_DIR' => 'history', 'RSPEC_TIA_CONFIG' => nil, 'RSPEC_TIA_FRAGMENT_PATH' => nil,
+      'RAILS_TIA_REPORT_DIR' => 'history', 'RAILS_TIA_CONFIG' => nil, 'RAILS_TIA_FRAGMENT_PATH' => nil,
       'GITHUB_SHA' => 'tested-sha', 'CI_COMMIT_SHA' => nil, 'GITHUB_RUN_ID' => '42',
       'GITHUB_RUN_ATTEMPT' => '2', 'CI_NODE_INDEX' => '3', 'TEST_ENV_NUMBER' => '2',
     }
@@ -25,7 +25,7 @@ RSpec.describe 'CI run reports' do
   end
 
   def cli(*args, overrides: {})
-    run_ruby([File.expand_path('../../exe/rspec-tia', __dir__), *args], overrides)
+    run_ruby([File.expand_path('../../exe/rails-tia', __dir__), *args], overrides)
   end
 
   def records(type)
@@ -33,7 +33,7 @@ RSpec.describe 'CI run reports' do
   end
 
   def run_formatter(*args)
-    run_ruby(%w(-rrspec_tia/boot -S rspec --require rspec_tia/formatter --format RspecTia::Formatter) + args)
+    run_ruby(%w(-rrails_tia/boot -S rspec --require rails_tia/formatter --format RailsTia::Formatter) + args)
   end
 
   it 'links measured worker output, a replayable map, a selection and a full-suite audit' do
@@ -49,6 +49,7 @@ RSpec.describe 'CI run reports' do
     expect(status).to be_success, err
     worker = records('map_worker').values.fetch(0)
     expect(worker).to include('schema_version' => 1, 'spec_count' => 2, 'example_count' => 2, 'failed' => false,
+                              'rails_tia_version' => RailsTia::VERSION,
                               'node' => '3', 'worker' => '2', 'run_id' => '42', 'attempt' => '2')
     expect(worker['coverage_calls']).to be >= 2
     expect(worker['timings_seconds'].values_at('coverage', 'scan', 'write_fragment')).to all(be >= 0)
@@ -102,14 +103,14 @@ RSpec.describe 'CI run reports' do
   it 'distinguishes successful empty selections, full runs, failed input, and disabled reporting' do
     args = %w(select --changed-files-from changes)
     File.write(File.join(@root, 'changes'), "unused.rb\n")
-    expect(cli(*args, overrides: { 'RSPEC_TIA_REPORT_DIR' => '' }).first).to eq("spec\n")
+    expect(cli(*args, overrides: { 'RAILS_TIA_REPORT_DIR' => '' }).first).to eq("spec\n")
     expect(File.exist?(@reports)).to be(false)
 
     expect(cli(*args).first).to eq("spec\n")
     expect(records('select').values.first).to include('full_run' => true, 'reason_code' => 'missing_map',
                                                       'map_id' => nil, 'matches' => nil)
-    RspecTia::Map.new(generated_at: Time.now).add('spec/sample_spec.rb', ['other.rb'])
-      .dump(File.join(@root, 'tmp/rspec_tia/map.json.gz'))
+    RailsTia::Map.new(generated_at: Time.now).add('spec/sample_spec.rb', ['other.rb'])
+      .dump(File.join(@root, 'tmp/rails_tia/map.json.gz'))
     expect(cli(*args).first).to be_empty
     expect(records('select').values).to include(a_hash_including('full_run' => false, 'selected_specs' => []))
     stdout, _, status = cli('select', '--changed-files-from', 'absent')
@@ -131,7 +132,7 @@ RSpec.describe 'CI run reports' do
     expect(cli(*args).last.exitstatus).to eq(1)
     _, err, status = cli('audit', '--junit', '.', '--selection-report', @root)
     expect(status.exitstatus).to eq(1)
-    expect(err).to start_with('[rspec_tia] Cannot read selection report')
+    expect(err).to start_with('[rails_tia] Cannot read selection report')
     expect(records('audit').size).to eq(1)
   end
 
@@ -148,8 +149,8 @@ RSpec.describe 'CI run reports' do
     _, err, status = cli('map', 'merge')
     expect(err).to include('Cannot save run report', 'Merged 1 fragments')
     expect(status).to be_success, err
-    config = RspecTia::Configuration.load(root: @root)
-    expect(RspecTia::Map.load(config.map_path).specs).to contain_exactly('spec/a_spec.rb')
+    config = RailsTia::Configuration.load(root: @root)
+    expect(RailsTia::Map.load(config.map_path).specs).to contain_exactly('spec/a_spec.rb')
 
     File.write(File.join(@root, 'changes'), "spec/a_spec.rb\n")
     out, err, status = cli('select', '--changed-files-from', 'changes')
@@ -175,7 +176,7 @@ RSpec.describe 'CI run reports' do
   end
 
   it 'warns if a history field cannot be encoded and publishes no partial report' do
-    report = RspecTia::RunReport.new('select', @reports)
+    report = RailsTia::RunReport.new('select', @reports)
     expect { report.write { { job: "\xff".b.force_encoding('UTF-8') } } }
       .to output(/Cannot save run report/).to_stderr
     expect(Dir.children(@reports)).to be_empty
@@ -202,7 +203,7 @@ RSpec.describe 'CI run reports' do
     File.write(File.join(@root, 'spec/failing_spec.rb'), "RSpec.describe('failure') { it { expect(false).to be true } }")
     expect(run_formatter.last.exitstatus).to eq(1)
     expect(records('map_worker').values.first).to include('failed' => true, 'example_count' => 1)
-    map = RspecTia::Map.load(Dir.glob(File.join(@root, 'tmp/rspec_tia/fragments/*')).fetch(0))
+    map = RailsTia::Map.load(Dir.glob(File.join(@root, 'tmp/rails_tia/fragments/*')).fetch(0))
     expect(map).to be_stale(max_age_days: 3)
   end
 end

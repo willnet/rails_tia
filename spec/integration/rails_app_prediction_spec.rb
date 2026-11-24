@@ -18,7 +18,7 @@ RSpec.describe 'Rails application prediction oracle' do
         map = baseline
         if entry['static_only']
           # Erase all runtime edges while retaining map freshness and the independent spec inventory.
-          map = RspecTia::Map.new(generated_at: baseline.generated_at)
+          map = RailsTia::Map.new(generated_at: baseline.generated_at)
           app.all_specs.each { |spec| map.add(spec, []) }
         end
         prediction = app.predict(map, changed)
