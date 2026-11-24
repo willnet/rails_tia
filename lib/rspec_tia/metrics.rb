@@ -26,14 +26,13 @@ module RspecTia
       base.merge(time_metrics(all_specs))
     end
 
-    def write(path = @config.metrics_path)
+    def write(path = @config.metrics_path, data: to_h)
       FileUtils.mkdir_p(File.dirname(path))
-      File.write(path, JSON.pretty_generate(to_h))
+      File.write(path, JSON.pretty_generate(data))
       path
     end
 
-    def summary
-      data = to_h
+    def summary(data = to_h)
       if data['full_run']
         "[rspec_tia] Full run: #{data['reason']} (#{data['total_spec_count']} specs)"
       else

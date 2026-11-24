@@ -102,6 +102,28 @@ RSpec.describe RspecTia::Predictor do
     end
   end
 
+  it 'checks shared candidates once and counts only existing matches for each changed path' do
+    with_project(PROJECT_FILES) do |root|
+      changed = %w(app/models/user.rb app/lib/shared.rb spec/models/user_spec.rb app/models/deleted.rb)
+      present = 'spec/models/user_spec.rb'
+      deleted = 'spec/models/deleted_spec.rb'
+      map = fresh_map.add(present, changed.first(2)).add(deleted, changed)
+      predictor = build(root, map)
+      [present, deleted].each do |spec|
+        expect(File).to receive(:exist?).with(File.join(root, spec)).once.and_call_original
+      end
+      result = predictor.call(context(changed), trace: true)
+
+      expect(result.specs).to eq([present])
+      expect(result.matches).to eq(
+        changed[0] => { mapped_specs: 1, static_specs: 1, changed_spec: false },
+        changed[1] => { mapped_specs: 1, static_specs: 0, changed_spec: false },
+        changed[2] => { mapped_specs: 0, static_specs: 0, changed_spec: true },
+        changed[3] => { mapped_specs: 0, static_specs: 0, changed_spec: false },
+      )
+    end
+  end
+
   it '影響するspecが無ければ空を返す（ジョブ側で早期終了できるようにするため）' do
     with_project(PROJECT_FILES) do |root|
       result = build(root, fresh_map.add('spec/models/user_spec.rb', %w(app/models/user.rb)))

@@ -303,6 +303,64 @@ bundle exec rspec-tia doctor
 
 Commands accept `--config PATH` and `--root PATH` to override the configuration file and project root.
 
+## Continuous improvement reports
+
+Set `RSPEC_TIA_REPORT_DIR` in the map-generation, merge, selection and audit jobs to keep a history. Use a dedicated directory outside the map fragment directory. Relative paths resolve from the project root (including `--root`). Reporting is disabled when the variable is unset or empty.
+
+Each invocation or RSpec worker writes one `<type>-<report_id>.json` file. Reports use schema version 1. They include a UUID, UTC timestamp, rspec_tia version, commit SHA and available GitHub Actions or GitLab job metadata. Set `CI_NODE_INDEX` from the matrix index on GitHub Actions to identify the shard. Fields without CI metadata are null.
+
+If saving a history report or its archived map fails, rspec_tia warns on standard error and continues. RSpec can finish writing its other formatter outputs, and the CLI returns the outcome of selection, merge or audit. Published history files use mode `0644` subject to the process umask.
+
+| Type | What to compare across runs |
+| --- | --- |
+| `map_worker` | Spec and example counts, test failure status, number of Coverage reads (including the initial clear), cumulative seconds spent reading Coverage, scanning it and writing the fragment, fragment size, Ruby/RSpec/Rails versions and active tracking features. `suite_seconds` covers formatter start through fragment write. Use CI job timings for end-to-end elapsed time across parallel workers. |
+| `map_merge` | Source, spec, edge and fragment counts, ten sources with the most associated specs, times for merging, writing the map and archiving it, fragment IDs and merged map ID. Produced by both `map merge` and `map fetch` with merging enabled. |
+| `select` | Changed files, selected specs, map ID, existing metrics and a stable full-run reason code. For selective runs, each changed file has counts of existing specs matched by the map and by static rules, plus whether the changed spec itself was selected. A spec can match more than one route. |
+| `audit` | Failed and missed spec paths from the full run, validation errors, number of parsed JUnit files and the prediction ID when using a selection report. Invalid input gives `valid: false` and `missed_specs: null`. |
+
+The merged map is also saved under `maps/<map_id>.json.gz` in the report directory. Map and fragment IDs are SHA-256 digests of the uncompressed map JSON. A worker's `fragment_id` links to the merge report, and a selection's `map_id` identifies the snapshot to use for replay. Compare reported phase times to locate expensive operations. To measure the overall cost of enabling Coverage, compare full runs on the same commit and worker configuration with and without mapping.
+
+### Audit a saved selection
+
+Use the selection report from the change being tested. For example, in Bash, starting with a fresh report directory for this job:
+
+```bash
+export RSPEC_TIA_REPORT_DIR=tmp/rspec_tia/reports
+bundle exec rspec-tia select --changed-files-from changed-files.txt > specs.txt || exit "$?"
+selection=( "$RSPEC_TIA_REPORT_DIR"/select-*.json )
+[[ ${#selection[@]} == 1 && -f "${selection[0]}" ]] || exit 1
+# Run the full suite and collect its JUnit XML, including results from failing jobs.
+bundle exec rspec-tia audit --selection-report "${selection[0]}" --junit tmp/junit \
+  --expect-junit shard-1.xml --expect-junit shard-2.xml
+```
+
+Across jobs or workflows, pass the exact selection report for the commit under test. When both CI commit SHAs are available, audit requires them to match. The selection's `report_id` becomes the audit's `prediction_id`. The existing `--predicted specs.txt` mode also produces an audit report, with a null prediction ID.
+
+Collect the full suite's XML in a fresh JUnit directory for each run. Audit reads every XML there. Supply one `--expect-junit` per expected file, relative to that directory. The report lists absent paths in `missing_junit_files`. The `junit_complete` field is true when all expected files were parsed as JUnit, false when any were missing or unreadable as JUnit, and null when no expectations were supplied. Check `valid` before counting misses. For example, all shards can arrive and still leave audit unable to identify the spec for a failed testcase.
+
+### Store reports directly in S3
+
+Set `RSPEC_TIA_REPORT_DIR` at job level and use a fresh directory per job. After the producer steps, upload from every worker job and from the merge, selection and audit jobs, including when tests or audit fail. The following GitHub Actions step assumes the AWS CLI and AWS credentials are available and `RSPEC_TIA_S3_URI` names a private bucket or prefix (for example, `s3://my-ci-history/rspec-tia`). Configure credentials in the workflow, for example through [GitHub Actions OIDC](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws).
+
+```yaml
+- name: Store rspec_tia history
+  if: always()
+  shell: bash
+  run: |
+    dir="${RSPEC_TIA_REPORT_DIR:?}"
+    base="${RSPEC_TIA_S3_URI:?}/${GITHUB_REPOSITORY}"
+    if [[ -d "$dir" ]]; then
+      # Upload the snapshot before records that reference it.
+      if [[ -d "$dir/maps" ]]; then
+        aws s3 sync "$dir/maps/" "$base/maps/" --size-only --no-follow-symlinks
+      fi
+      aws s3 cp "$dir/" "$base/reports/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/$GITHUB_JOB/" \
+        --recursive --no-follow-symlinks --exclude '*' --include '*.json'
+    fi
+```
+
+Retries of the upload use the same keys. Re-running rspec_tia creates new report IDs, including on matrix jobs with the same job name. The same JSON files can be imported into an analytics database using `report_id` as the unique key. CI owns storage credentials and retention.
+
 ## Limitations
 
 - Ruby coverage alone does not capture templates. ActionView tracking supplements rendered project files; use static mappings or full-run paths for unrendered/new templates, disabled tracking, and cache-hidden dependencies as described above.

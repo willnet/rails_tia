@@ -12,7 +12,9 @@ module RspecTia
       @map = map
     end
 
-    def reason(context)
+    def reason(context) = decision(context)&.last
+
+    def decision(context)
       not_merge_request(context) ||
         missing_map ||
         stale_map ||
@@ -27,27 +29,27 @@ module RspecTia
     def not_merge_request(context)
       return nil if context.merge_request?
 
-      'Not a merge request pipeline'
+      ['not_merge_request', 'Not a merge request pipeline']
     end
 
     def missing_map
       return nil unless @map.nil? || @map.empty?
 
-      'No coverage map available'
+      ['missing_map', 'No coverage map available']
     end
 
     def stale_map
       return nil unless @map.stale?(max_age_days: @config.map_max_age_days)
 
       generated = @map.generated_at ? @map.generated_at.utc.iso8601 : 'unknown'
-      "Coverage map is stale (generated: #{generated} / maximum age: #{@config.map_max_age_days} days)"
+      ['stale_map', "Coverage map is stale (generated: #{generated} / maximum age: #{@config.map_max_age_days} days)"]
     end
 
     def matched_label(context)
       hit = @config.full_run_labels & context.labels
       return nil if hit.empty?
 
-      "Full-run label matched: #{hit.join(', ')}"
+      ['label', "Full-run label matched: #{hit.join(', ')}"]
     end
 
     def matched_commit_message(context)
@@ -55,14 +57,14 @@ module RspecTia
       hit = @config.full_run_commit_message_tokens.select { |token| message.include?(token) }
       return nil if hit.empty?
 
-      "Full-run token found in commit message: #{hit.join(', ')}"
+      ['commit_message', "Full-run token found in commit message: #{hit.join(', ')}"]
     end
 
     def too_many_changes(context)
       limit = @config.max_changed_files
       return nil if limit.nil? || context.changed_files.size <= limit
 
-      "Too many changed files (#{context.changed_files.size} > #{limit})"
+      ['changed_file_limit', "Too many changed files (#{context.changed_files.size} > #{limit})"]
     end
 
     def matched_full_run_path(context)
@@ -71,7 +73,7 @@ module RspecTia
 
       sample = hit.first(SAMPLE_SIZE).join(', ')
       suffix = hit.size > SAMPLE_SIZE ? " and #{hit.size - SAMPLE_SIZE} more" : ''
-      "Full-run path changed: #{sample}#{suffix}"
+      ['path', "Full-run path changed: #{sample}#{suffix}"]
     end
   end
 end

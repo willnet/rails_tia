@@ -26,24 +26,19 @@ module RspecTia
     end
 
     def specs_for(path)
+      candidates_for(path).select { |spec| File.exist?(File.join(@root, spec)) }
+    end
+
+    def candidates_for(path)
       @rules.flat_map do |rule|
         match = rule.pattern.match(path)
         next [] if match.nil?
 
-        expand(rule.templates, match.captures)
+        rule.templates.filter_map { |template| format_template(template, match.captures) }
       end.uniq
     end
 
     private
-
-    def expand(templates, captures)
-      templates.filter_map do |template|
-        candidate = format_template(template, captures)
-        next if candidate.nil?
-
-        candidate if File.exist?(File.join(@root, candidate))
-      end
-    end
 
     # Ignore a rule if its number of %s placeholders does not match the capture count.
     # A typo in one rule should not prevent the rest of the prediction from completing.

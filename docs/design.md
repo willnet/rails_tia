@@ -102,3 +102,15 @@ To compare collectors, the fixture keeps separate handwritten expectations for t
 The fixture loads its model before the suite starts. Comparing normal loading, eager loading, and runs with ActiveRecord tracking disabled shows which dependencies come from executing the model definition on first load and which come from the ActiveRecord collector. Shared data setup avoids SQL carrying a model name so setup alone cannot give every spec a model dependency.
 
 Each child process runs a temporary copy with its own database, map fragments, and environment. Normal and eager-loading runs exercise definition order and fixed seeds. Each run checks several cases to limit startup costs. Mutation tests retain the map from the passing baseline, then check structured assertion failures in both the full and selected runs after the change. This ensures that a startup exception cannot count as detecting the injected fault. The fixture measures correctness. Performance needs to be evaluated separately.
+
+## CI run history
+
+When a job sets `RSPEC_TIA_REPORT_DIR`, the formatter and CLI write a JSON report for each operation. The consuming CI workflow authenticates to its storage provider and transfers the files, so the gem needs no cloud SDK or CI artifact service. Each report has a UUID and is published by renaming a temporary file. Parallel jobs can upload to the same destination without filename collisions, and retrying an upload reuses the same key.
+
+The SHA-256 digest of the uncompressed map JSON identifies the map used for prediction. Maps from the same commit can differ in their dependencies or generation time. Hashing the JSON also works with existing maps and preserves their IDs across recompression. A merge archives the map under its ID and records the IDs of its fragments so a prediction can be traced back to the workers' timings and tracking settings. Timings use a monotonic clock and follow the existing coverage read and clear boundaries.
+
+Passing the selection report to `audit` carries the prediction's UUID into the audit record. Two predictions can select the same specs from different changed files or maps and still be evaluated separately. A plain list of predicted paths carries no prediction ID.
+
+For parallel suites, the caller can supply the expected XML paths relative to the JUnit directory. Audit records whether every expected file could be parsed as JUnit and whether the inputs identify the spec for every failure. All shards can arrive even when a failing testcase has no file path. Without an expected file list, completeness is unknown. Invalid audit inputs produce a null list of missed specs so they can be excluded from missed-failure counts.
+
+If saving optional history fails, rspec_tia warns on standard error so other RSpec formatters can finish writing JUnit and each command can return its primary result. Failure to save the working map or read a prediction supplied as audit input still fails the operation.
