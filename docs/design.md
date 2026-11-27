@@ -97,6 +97,12 @@ instance allocated before the test. Anonymous subclasses contribute their named 
 A missing extension in auto mode makes the map stale so an incomplete map cannot guide selection. Applications can opt
 out to avoid the process-wide allocation hook. Other Ruby engines lack the required event.
 
+## Qualified constant reads
+
+A scalar such as `Config::LIMIT` can affect a request without executing its assignment or allocating an instance of an application class. During map generation, Prism indexes simple constant assignments in application directories and literal qualified reads in those directories and runnable tests. Absolute reads match full names. Relative reads match suffixes to allow for enclosing namespaces. No lookup invokes application code or triggers an autoload.
+
+The index groups matching definition files by reader file and method body line range. RSpec checks those ranges against cumulative line deltas. Minitest checks the counters cleared at its existing file boundaries. Reads outside a method use the touched reader file as the unit of attribution, since a class or block declaration can have a different coverage line than its constant expression. These edges use the same hook attribution, serialization, and selection paths as ordinary coverage. This one-hop index does not trace transitive initialization-time dependencies.
+
 ## Dependencies from `described_class`
 
 Issue #26 describes classes that contain only constants or declarations. After the class has loaded, using it can leave its line counts unchanged. Plain Ruby classes and models used without SQL may also produce no ActiveRecord notifications. For each executed example, the collector reads the group's `described_class` and adds definition files for the named class or module and its `ancestors`. This works independently of Rails and is enabled by default. Set `described_class.enabled: false` to disable it.

@@ -32,6 +32,7 @@ module RailsTia
         'active_record' => true,
         'action_view' => true,
         'object_allocations' => 'auto',
+        'constant_reads' => true,
         'app_dirs' => [],
       },
       'ci' => {
@@ -99,6 +100,14 @@ module RailsTia
     def ci_adapter = dig('ci', 'adapter')
     def gitlab_options = dig('ci', 'gitlab')
     def github_actions_options = dig('ci', 'github_actions')
+
+    def constant_reads_enabled?
+      case dig('rails', 'constant_reads')
+      when true, 'true' then true
+      when false, 'false' then false
+      else raise Error, 'rails.constant_reads must be true or false'
+      end
+    end
 
     def object_allocations_required? = @allocation_mode == true
 

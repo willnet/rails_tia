@@ -24,6 +24,11 @@ module RailsTia
       @rails_support ||= build_rails_support
       @action_view_support ||= build_action_view_support
       @tracking = { active_record: !!@rails_support, action_view: !!@action_view_support }
+      if @config.rails_enabled? && @config.constant_reads_enabled?
+        require 'rails_tia/constant_reads'
+        @constant_reads ||= ConstantReads.new(@config)
+      end
+      @tracking[:constant_reads] = !!@constant_reads
       baseline = coverage_result
       @rails_support&.flush
       @action_view_support&.flush
@@ -162,15 +167,21 @@ module RailsTia
       end
     end
 
+    def append_covered_file(files, path, lines, previous = nil)
+      file = path.delete_prefix(@root)
+      files << file
+      files.concat(@constant_reads.sources(file, lines, previous)) if @constant_reads
+    end
+
     def project_files(result)
-      result.filter_map do |path, coverage|
+      result.each_with_object([]) do |(path, coverage), files|
         next unless path.start_with?(@root)
 
         lines = coverage[:lines]
         next if lines.nil?
         next unless lines.any? { |hits| hits.to_i.positive? }
 
-        path.delete_prefix(@root)
+        append_covered_file(files, path, lines)
       end
     end
   end

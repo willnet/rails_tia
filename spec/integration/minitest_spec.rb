@@ -62,6 +62,30 @@ RSpec.describe 'Minitest map collection' do
     end
   end
 
+  it 'attributes a preloaded constant to its reader in a Rails worker' do
+    with_app do |app|
+      File.write(File.join(app.root, 'app/services/config.rb'), "module Config; LIMIT = 10; end\n")
+      File.write(File.join(app.root, 'app/services/policy.rb'), <<~SOURCE)
+        class Policy
+          def self.limit
+            Config::LIMIT
+          end
+        end
+      SOURCE
+      File.write(File.join(app.root, 'test/policy_test.rb'), <<~SOURCE)
+        require_relative 'test_helper'
+        class PolicyTest < ActiveSupport::TestCase
+          def test_limit
+            assert_equal 10, Policy.limit
+          end
+        end
+      SOURCE
+      output, status = run_tests(app, parallel: 'processes')
+      expect(status).to be_success, output
+      expect(fragment(app).specs_for('app/services/config.rb')).to contain_exactly('test/policy_test.rb')
+    end
+  end
+
   it 'maps a preloaded form to the test that allocates it in a Rails worker', if: RUBY_ENGINE == 'ruby' do
     with_app do |app|
       FileUtils.mkdir_p(File.join(app.root, 'app/forms'))
