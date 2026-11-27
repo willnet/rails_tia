@@ -6,7 +6,7 @@ Gem::Specification.new do |spec|
   spec.authors = ['Shinichi Maeshima']
   spec.summary = 'Test Impact Analysis for Rails applications'
   spec.description = <<~DESC
-    Build a dependency map from RSpec coverage and select the spec files
+    Build a dependency map from RSpec or Minitest coverage and select the test files
     affected by changed files.
   DESC
   spec.license = 'MIT'

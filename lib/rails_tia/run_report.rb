@@ -38,6 +38,8 @@ module RailsTia
       @id = SecureRandom.uuid
     end
 
+    attr_reader :timings
+
     def measure(key)
       start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       result = yield

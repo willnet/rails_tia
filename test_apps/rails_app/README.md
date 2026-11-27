@@ -2,7 +2,7 @@
 
 This small Rails application checks dependency attribution and test selection against
 handwritten answers. It is a correctness regression fixture, not a performance
-benchmark. It uses Ruby 3.3+, Rails 7.2, RSpec 3.13, and SQLite from the repository's
+benchmark. It uses Ruby 3.3+, Rails 7.2, RSpec 3.13, Minitest 5.27, and SQLite from the repository's
 root bundle. There is no separate Gemfile or `rspec-rails` dependency. Requests run
 through Rack, routing, controllers, and ERB views without an HTTP server. ActionView
 tracking is verified with Rails 7.2.4; other versions and HAML are not verified.
@@ -18,7 +18,9 @@ bundle exec rake spec
 ```
 
 The ordinary suite discovers only `spec/**/*_spec.rb`. Specs under this application
-run only in child processes of the integration suite.
+run only in child processes of the integration suite. The Minitest integration
+spec runs the tests under `test/` with `bin/rails test` in a temporary copy. It
+checks serial and process-parallel selection, missing workers and thread rejection.
 
 ## Running the application specs directly
 
