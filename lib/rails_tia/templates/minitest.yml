@@ -1,0 +1,38 @@
+spec_glob: 'test/**/*_test.rb'
+full_run_token: 'test/'
+
+full_run:
+  paths:
+    # Generated configuration path
+    - .ruby-version
+    - Gemfile
+    - Gemfile.lock
+    - config/**/*
+    - db/**/*
+    - app/views/layouts/**/*
+    - app/views/shared/**/*
+    - test/test_helper.rb
+    - test/application_system_test_case.rb
+    - test/support/**/*
+    - test/factories.rb
+    - test/factories/**/*
+    - test/fixtures/**/*
+    - .github/workflows/**/*
+    - .gitlab-ci.yml
+
+static_mapping:
+  - source: 'app/(.+)\.rb'
+    test: 'test/%s_test.rb'
+  - source: 'lib/(.+)\.rb'
+    test: 'test/lib/%s_test.rb'
+  - source: 'app/controllers/(.+)_controller\.rb'
+    test: 'test/integration/%s_test.rb'
+  - source: 'app/views/(.+)/[^/]+'
+    test:
+      - 'test/controllers/%s_controller_test.rb'
+      - 'test/integration/%s_test.rb'
+  - source:
+      - 'app/(?:javascript|assets)/.+'
+      - 'vendor/javascript/.+'
+      - 'package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?'
+    test_glob: 'test/system/**/*_test.rb'

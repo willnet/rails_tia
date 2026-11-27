@@ -12,7 +12,7 @@ module RailsTia
     USAGE = <<~TEXT.freeze
       Usage: rails-tia <command> [options]
 
-        init                  Create a configuration for a Rails application
+        init                  Create a Rails configuration (--runner rspec|minitest)
         select                Print selected specs (or full_run_token for a full run)
         map merge             Merge map fragments into a single map
         map fetch             Fetch and merge map fragments from CI
@@ -60,9 +60,12 @@ module RailsTia
     private
 
     def init
-      parse!('init')
+      runner = nil
+      parse!('init') do |parser|
+        parser.on('--runner RUNNER', %w[rspec minitest], 'Test runner (rspec or minitest)') { |value| runner = value }
+      end
       path = config_path
-      template = File.read(File.join(__dir__, 'templates', 'rails_tia.yml'))
+      template = File.read(File.join(__dir__, 'templates', "#{runner || default_runner}.yml"))
       contents = template.sub("    # Generated configuration path\n") { config_path_rule(path) }
       File.open(path, 'wx') { |file| file.write(contents) }
       puts "Created #{path}"
@@ -70,9 +73,15 @@ module RailsTia
     rescue Errno::EEXIST
       warn "[rails_tia] #{path} already exists"
       1
-    rescue SystemCallError => e
+    rescue SystemCallError, OptionParser::ParseError => e
       warn "[rails_tia] #{e.message}"
       1
+    end
+
+    def default_runner
+      return 'rspec' if File.directory?(File.join(root, 'spec'))
+
+      File.directory?(File.join(root, 'test')) ? 'minitest' : 'rspec'
     end
 
     def config_path_rule(path)

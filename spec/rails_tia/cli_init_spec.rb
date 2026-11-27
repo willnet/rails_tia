@@ -23,6 +23,49 @@ RSpec.describe 'init' do
     end
   end
 
+  it 'generates a Minitest preset from the test directory under --root' do
+    model = 'test/models/admin/user_test.rb'
+    controller = 'test/controllers/admin/users_controller_test.rb'
+    integration = 'test/integration/admin/users_test.rb'
+    browser = 'test/system/login_test.rb'
+    tests = [model, controller, integration, browser]
+    with_project(tests) do |root|
+      expect { expect(RailsTia::Cli.start(['init', '--root', root])).to eq(0) }.to output(/Created/).to_stdout
+      config = RailsTia::Configuration.load(root: root)
+      expect(config.all_specs).to match_array(tests)
+      expect(config.full_run_token).to eq('test/')
+      %w[.rails_tia.yml test/test_helper.rb test/application_system_test_case.rb test/fixtures/users.yml
+         test/support/login.rb].each { |path| expect(config.full_run_path?(path)).to be(true) }
+      mapping = RailsTia::StaticMapping.new(config.static_mapping_rules, root: root)
+      expect(mapping.specs_for('app/models/admin/user.rb')).to eq([model])
+      expect(mapping.specs_for('app/controllers/admin/users_controller.rb')).to contain_exactly(controller, integration)
+      expect(mapping.specs_for('app/views/admin/users/index.html.erb')).to contain_exactly(controller, integration)
+      expect(mapping.specs_for('app/javascript/application.js')).to eq([browser])
+    end
+  end
+
+  it 'defaults to RSpec in mixed projects and allows an explicit Minitest configuration alongside it' do
+    with_project(%w[spec/models/user_spec.rb test/models/user_test.rb]) do |root|
+      expect { RailsTia::Cli.start(['init', '--root', root]) }.to output(/Created/).to_stdout
+      expect(RailsTia::Configuration.load(root: root).all_specs).to eq(['spec/models/user_spec.rb'])
+
+      path = File.join(root, 'minitest.yml')
+      options = ['init', '--runner', 'minitest', '--root', root, '--config', path]
+      expect { expect(RailsTia::Cli.start(options)).to eq(0) }.to output(/Created/).to_stdout
+      config = RailsTia::Configuration.load(path, root: root)
+      expect(config.all_specs).to eq(['test/models/user_test.rb'])
+      expect(config.full_run_path?('minitest.yml')).to be(true)
+    end
+  end
+
+  it 'rejects an unknown runner before writing a configuration' do
+    with_project([]) do |root|
+      expect { expect(RailsTia::Cli.start(['init', '--runner', 'unknown', '--root', root])).to eq(1) }
+        .to output(/invalid argument/).to_stderr
+      expect(File.exist?(File.join(root, '.rails_tia.yml'))).to be(false)
+    end
+  end
+
   it 'preserves an existing configuration even when it cannot be parsed' do
     with_project([]) do |root|
       path = File.join(root, '.rails_tia.yml')

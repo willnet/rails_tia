@@ -33,11 +33,13 @@ From your Rails application root, run:
 bundle exec rails-tia init
 ```
 
-This creates an editable `.rails_tia.yml`. Changes to dependencies, Rails configuration, database files, layouts, shared partials, shared spec setup, and CI definitions trigger a full run. Static mappings select existing specs by convention. For example, a change to `app/controllers/admin/users_controller.rb` selects `spec/requests/admin/users_spec.rb` if it exists, even for a new controller. Other settings inherit the runtime defaults, including Rails tracking and CI adapter detection.
+This creates an editable `.rails_tia.yml`. If the project has a `test/` directory and no `spec/` directory, `init` generates the Minitest preset. Otherwise it generates the RSpec preset. Use `--runner minitest` or `--runner rspec` to choose explicitly, including before adding any tests.
+
+Changes to dependencies, Rails configuration, database files, layouts, shared partials, shared spec setup, and CI definitions trigger a full run. Static mappings select existing specs by convention. For example, a change to `app/controllers/admin/users_controller.rb` selects `spec/requests/admin/users_spec.rb` if it exists, even for a new controller. Other settings inherit the runtime defaults, including Rails tracking and CI adapter detection.
 
 Review the generated rules for your application's directory layout. Running `init` again keeps the existing file and exits with status 1. Without a configuration file, full-run paths, labels, tokens, and static mappings are empty. The following example shows additional settings you can customize.
 
-The preset selects all system and feature specs for changes under `app/javascript/`, `app/assets/`, or `vendor/javascript/`, and for changes to the root `package.json` or npm, Yarn, pnpm, or Bun lockfile. If neither spec directory contains matching files, this rule contributes no specs. Coverage matches, other static mappings, changed specs, and full-run conditions still apply.
+The RSpec preset selects all system and feature specs for changes under `app/javascript/`, `app/assets/`, or `vendor/javascript/`, and for changes to the root `package.json` or npm, Yarn, pnpm, or Bun lockfile. If neither spec directory contains matching files, this rule contributes no specs. Coverage matches, other static mappings, changed specs, and full-run conditions still apply.
 
 To use a different configuration file, set `RAILS_TIA_CONFIG` for map collection or pass `--config PATH` to the CLI. For example, `rails-tia init --config tia.yml` adds `tia.yml` to the generated full-run paths so editing the selection rules triggers a full run. Only configuration files inside the project root can match project changes.
 
@@ -162,16 +164,13 @@ Use `RAILS_TIA_FRAGMENT_PATH` to override the fragment output path. `map merge -
 
 ### Minitest
 
-Set the test discovery glob and full-suite argument in `.rails_tia.yml`:
+Generate the Minitest preset from the application root:
 
-```yaml
-spec_glob: 'test/**/*_test.rb'
-full_run_token: 'test/'
-full_run:
-  paths:
-    - test/test_helper.rb
-    - test/support/**/*
+```bash
+bundle exec rails-tia init --runner minitest
 ```
+
+The preset discovers `test/**/*_test.rb` and emits `test/` for a full run. Changes to shared test helpers and fixtures trigger the full suite. Model, controller and view changes select matching tests by convention, and frontend changes select the system tests under `test/system/`.
 
 Generate the map from the full suite, including system tests under `test/`:
 
