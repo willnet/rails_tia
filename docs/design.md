@@ -4,9 +4,9 @@ These notes explain why rails_tia works the way it does and which behaviors futu
 
 ## Purpose and components
 
-Rails applications are the project's focus. The RSpec formatter uses the application's copy of RSpec Core. Keeping RSpec out of the gem's runtime dependencies lets users install the CLI without RSpec and leaves room for other Rails test runners, such as Minitest.
+Rails applications are the project's focus. The RSpec and Minitest entry points use the application's test runner. Keeping both runners out of the gem's runtime dependencies lets users install the CLI independently.
 
-A full RSpec run on the default branch builds a dependency map at spec file granularity. Each change pipeline uses that map to select the spec files affected by its changed files.
+A full test run on the default branch builds a dependency map at test file granularity. Each change pipeline uses that map to select the spec files affected by its changed files.
 
 - `boot.rb` starts coverage before the application loads. `formatter.rb` writes spec and hook dependencies to map fragments.
 - `rails_support.rb` supplements coverage with dependencies observed through Rails and ActiveRecord.
@@ -32,6 +32,12 @@ Reading coverage for every example would substantially increase the number of re
 Group start and finish notifications let the formatter attribute `before/after(:context)` hooks, including their `:all` aliases, to the spec that runs the group. Dependencies from `before/after(:suite)` apply to every spec. If a test or hook fails, the formatter saves the map with a stale timestamp so prediction falls back to a full run.
 
 The formatter clears coverage once at suite start. Keeping the class definition lines executed during Rails eager loading would make every spec appear to depend on every file.
+
+## Minitest attribution and Rails process workers
+
+The Minitest adapter switches files before each test method, so setup, teardown, ActiveRecord queries and rendered templates belong to the runnable test. During test loading a class trace records the test files that open each runnable class. A shared test can be included by any of those files. The collector attributes dependencies to all of them and links the files to each other so a selective run loads the same class. For generated classes it can also resolve the method or constant definition. The collector clears coverage at file or suite boundaries. The adapter loads before the application and registers an early `after_run` hook so later application hooks finish before the fragment is published.
+
+Rails runs tests in forked workers but sends reporter notifications to the parent. Each worker collects locally and writes its map to a directory unique to that run after worker cleanup. The parent checks the actual pool size, including idle workers, before combining the worker maps into one CI fragment. A worker that encounters a collection error continues draining the Rails queue and returns from cleanup so Rails can deregister it. Its missing or invalid map fails collection in the parent. A stale placeholder protects against interrupted runs and coverage stopped by another tool before the final flush. Rails isolation forks again inside a test, beyond the worker collector, so an isolated test invalidates collection. Thread-parallel tests cannot be separated by clearing process-wide counters.
 
 ## ActiveRecord dependencies
 

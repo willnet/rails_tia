@@ -1,12 +1,12 @@
 # rails_tia
 
-Test Impact Analysis for Rails applications. Build a dependency map from RSpec coverage, then select the spec files affected by changed files.
+Test Impact Analysis for Rails applications. Build a dependency map from RSpec or Minitest coverage, then select the test files affected by changed files.
 
 > Under development (v0.1.0, unreleased). Interfaces may change.
 
 ## Requirements and installation
 
-Ruby 3.3 or later is required. To collect coverage with the RSpec formatter, your test bundle must also include `rspec-core` (`~> 3.9`), which `rspec` and `rspec-rails` normally provide. Add rails_tia to your test dependencies once it is available:
+Ruby 3.3 or later is required. To collect coverage with the RSpec formatter, your test bundle must also include `rspec-core` (`~> 3.9`), which `rspec` and `rspec-rails` normally provide. For Minitest collection, the application supplies Minitest (verified with Minitest 5.27 on Rails 7.2 and Minitest 6.1 on Rails 8.1). Add rails_tia to your test dependencies once it is available:
 
 ```ruby
 group :test do
@@ -39,7 +39,7 @@ Review the generated rules for your application's directory layout. Running `ini
 
 The preset selects all system and feature specs for changes under `app/javascript/`, `app/assets/`, or `vendor/javascript/`, and for changes to the root `package.json` or npm, Yarn, pnpm, or Bun lockfile. If neither spec directory contains matching files, this rule contributes no specs. Coverage matches, other static mappings, changed specs, and full-run conditions still apply.
 
-To use a different configuration file, set `RAILS_TIA_CONFIG` for the RSpec formatter or pass `--config PATH` to the CLI. For example, `rails-tia init --config tia.yml` adds `tia.yml` to the generated full-run paths so editing the selection rules triggers a full run. Only configuration files inside the project root can match project changes.
+To use a different configuration file, set `RAILS_TIA_CONFIG` for map collection or pass `--config PATH` to the CLI. For example, `rails-tia init --config tia.yml` adds `tia.yml` to the generated full-run paths so editing the selection rules triggers a full run. Only configuration files inside the project root can match project changes.
 
 ```yaml
 spec_glob: 'spec/**/*_spec.rb'
@@ -126,7 +126,7 @@ Static mappings remain necessary for new or unrendered templates and conditional
 rendering paths absent from the map. After enabling tracking, regenerate existing
 maps to collect the additional template edges.
 
-Described-class tracking is enabled by default, including without Rails. For each
+RSpec described-class tracking is enabled by default, including without Rails. For each
 executed example whose `described_class` is a named class or module, it adds the
 definition files of that target and its ancestors (superclasses and included or
 prepended modules) to the runnable consumer spec. This covers constant-only
@@ -159,6 +159,32 @@ ordinary RSpec runs can use Bootsnap with their usual settings.
 The formatter writes `map-<node>-<process>.json.gz` fragments under `map.fragment_dir`, using `CI_NODE_INDEX` and `TEST_ENV_NUMBER` when available. Collect fragments from all parallel workers before merging. Clear old fragments before each map generation so that previous runs cannot contaminate the map. Maps from failed tests or hooks are marked stale and cause selection to fall back to a full run.
 
 Use `RAILS_TIA_FRAGMENT_PATH` to override the fragment output path. `map merge --fragments DIR --output PATH` overrides the merge input directory and output file.
+
+### Minitest
+
+Set the test discovery glob and full-suite argument in `.rails_tia.yml`:
+
+```yaml
+spec_glob: 'test/**/*_test.rb'
+full_run_token: 'test/'
+full_run:
+  paths:
+    - test/test_helper.rb
+    - test/support/**/*
+```
+
+Generate the map from the full suite, including system tests under `test/`:
+
+```bash
+bundle exec ruby -rrails_tia/minitest bin/rails test test/ &&
+  bundle exec rails-tia map merge
+```
+
+The opt-in entry point starts coverage before Rails loads and tracks tests run through Minitest autorun. It supports serial execution and Rails process workers. Thread-parallel map collection is unsupported because Ruby threads share coverage counters. Set `PARALLEL_WORKERS=1` for the map command if your Rails suite normally uses threads. Selected tests can run with the usual parallel settings.
+
+Disable SimpleCov and any other tool that stops Ruby coverage while generating the map. Coverage must remain active through worker teardown and Minitest’s final hook. Tests using `ActiveSupport::Testing::Isolation` execute in another process and currently cause map generation to fail. In both cases the fragment remains stale.
+
+Use the selection script below with `bundle exec ruby bin/rails test "${specs[@]}"` as its final command. Only map generation needs `-rrails_tia/minitest`. If you use `audit`, configure your JUnit reporter to include project-relative test file paths in the `file` attribute of failing test cases.
 
 ## Select and run specs
 
@@ -331,7 +357,7 @@ If saving a history report or its archived map fails, rails_tia warns on standar
 
 | Type | What to compare across runs |
 | --- | --- |
-| `map_worker` | Spec and example counts, test failure status, number of Coverage reads (including the initial clear), cumulative seconds spent reading Coverage, scanning it and writing the fragment, fragment size, Ruby/RSpec/Rails versions and active tracking features. `suite_seconds` covers formatter start through fragment write. Use CI job timings for end-to-end elapsed time across parallel workers. |
+| `map_worker` | Spec and example counts, test failure status, number of Coverage reads (including the initial clear), cumulative seconds spent reading Coverage, scanning it and writing the fragment, fragment size, Ruby, test runner and Rails versions and active tracking features. `suite_seconds` covers formatter start through fragment write. Use CI job timings for end-to-end elapsed time across parallel workers. |
 | `map_merge` | Source, spec, edge and fragment counts, ten sources with the most associated specs, times for merging, writing the map and archiving it, fragment IDs and merged map ID. Produced by both `map merge` and `map fetch` with merging enabled. |
 | `select` | Changed files, selected specs, map ID, existing metrics and a stable full-run reason code. For selective runs, each changed file has counts of existing specs matched by the map and by static rules, plus whether the changed spec itself was selected. A spec can match more than one route. |
 | `audit` | Failed and missed spec paths from the full run, validation errors, number of parsed JUnit files and the prediction ID when using a selection report. Invalid input gives `valid: false` and `missed_specs: null`. |

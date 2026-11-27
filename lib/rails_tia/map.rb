@@ -95,6 +95,10 @@ module RailsTia
       self
     end
 
+    def mark_stale!
+      @generated_at = Time.at(0)
+    end
+
     # Treat an unknown generation timestamp as stale to stay conservative.
     def stale?(max_age_days:, now: Time.now)
       return true if @generated_at.nil?

@@ -129,8 +129,6 @@ class RailsAppRunner
     end.uniq.sort
   end
 
-  private
-
   def capture(env, command)
     output = +''
     status = nil
