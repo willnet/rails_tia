@@ -69,7 +69,8 @@ These settings apply during map collection.
 | `rails.active_record` | `true` | Track project model definitions identified by ActiveRecord query and instantiation events. |
 | `rails.action_view` | `true` | Track project templates, partials, and layouts rendered through ActionView. |
 | `rails.object_allocations` | `auto` | Track allocations on CRuby when Rails support is enabled. Set to `false` to disable the process-wide hook or `true` to require the native extension. |
-| `rails.app_dirs` | `[]` | Additional project-relative directories for allocation tracking alongside `app/` and `lib/`, for example `[components, engines/billing]`. |
+| `rails.constant_reads` | `true` | Resolve constant reads such as `Config::LIMIT` to project assignments using the existing line coverage. Applies when Rails tracking is enabled. |
+| `rails.app_dirs` | `[]` | Additional project-relative directories for allocation and constant tracking alongside `app/` and `lib/`, for example `[components, engines/billing]`. |
 | `described_class.enabled` | `true` | Track the definition files of an RSpec example's named `described_class` and its ancestors. Works independently of Rails. |
 
 Regenerate the map to record allocation dependencies. Creating an ordinary Ruby object or Struct links its test file to the definitions of its named class and ancestors under the configured directories. This includes named ancestors of anonymous subclasses. Other collectors keep their own path rules.
@@ -77,6 +78,10 @@ Regenerate the map to record allocation dependencies. Creating an ordinary Ruby 
 Construction counts even if the test never uses the object. Shared mixins can have many consumers, and suite-hook allocations apply to every test. Background-thread allocations belong to the test or hook active at the time, so join asynchronous work before the test finishes. Reusing an instance created during boot or allocating other storage types such as Hash subclasses can leave dependencies unrecorded. Use static mappings for known consumers.
 
 If the extension fails to load in auto mode on CRuby, map generation warns and marks the map stale for a full run. The legacy `rails.form_allocations` key is accepted with a deprecation warning when `rails.object_allocations` is omitted.
+
+Constant tracking indexes Ruby files in the application directories and runnable test files matching `spec_glob`, Ruby helpers under `spec/support/` and `test/support/`, and the standard `spec_helper.rb`, `rails_helper.rb`, and `test_helper.rb` entry points when map collection starts. Only assignments inside application directories supply definition paths. For example, constants in `config/initializers/` are covered by the generated full-run rule for `config/**/*`. Add custom application directories through `rails.app_dirs`. A change to an indexed constant assignment can select a test that executed the referencing method, even when Rails preloaded the definition. A read outside a method uses file-level coverage. Regenerate the map after enabling tracking or changing the directories.
+
+Attribution requires a line counter to advance. Calling a preloaded single-line method (including an endless definition) can leave its line counters unchanged and the consumer unmapped. A method can also execute without reaching every read in it. Rubydex resolves names using the indexed namespaces and ancestors, including constants inherited from a parent class. Dynamic lookups such as `const_get`, constants replaced at runtime, ancestors outside the index, and values copied into another constant during boot can still need static mappings. Class and module declarations, files added after collection starts, and syntax the parser cannot index are outside this collector’s scope. If loading Rubydex or constructing the index raises an error, collection warns and marks the fragment stale for a full run. Map worker reports include successful index construction time in `timings_seconds.constant_index`.
 
 ## CI adapters
 

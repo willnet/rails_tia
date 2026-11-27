@@ -19,6 +19,8 @@ Gem::Specification.new do |spec|
   spec.executables = %w(rails-tia)
   spec.require_paths = %w(lib)
 
+  spec.add_dependency 'rubydex', '~> 0.4.4'
+  spec.add_dependency 'prism', '>= 1.0', '< 3'
   spec.add_dependency 'rubyzip', '~> 3.0'
   spec.add_dependency 'rexml', '~> 3.2'
 

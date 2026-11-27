@@ -68,10 +68,10 @@ module RailsTia
     def project_files(snapshot)
       previous = @previous_lines
       @previous_lines = project_lines(snapshot)
-      @previous_lines.filter_map do |path, lines|
+      @previous_lines.each_with_object([]) do |(path, lines), files|
         before = previous[path]
         touched = before ? before != lines : lines.any? { |hits| hits.to_i.positive? }
-        path.delete_prefix(@root) if touched
+        append_covered_file(files, path, lines, before) if touched
       end
     end
 

@@ -32,6 +32,7 @@ module RailsTia
         'active_record' => true,
         'action_view' => true,
         'object_allocations' => 'auto',
+        'constant_reads' => true,
         'app_dirs' => [],
       },
       'ci' => {
@@ -72,6 +73,11 @@ module RailsTia
         warn '[rails_tia] rails.form_allocations is deprecated; use rails.object_allocations to configure tracking for all application classes'
         @data.fetch('rails')['object_allocations'] = rails.fetch('form_allocations')
       end
+      @constant_reads = case dig('rails', 'constant_reads')
+                        when true, 'true' then true
+                        when false, 'false' then false
+                        else raise Error, 'rails.constant_reads must be true or false'
+                        end
       @allocation_mode = case dig('rails', 'object_allocations')
                          when true, 'true' then true
                          when false, 'false' then false
@@ -99,6 +105,8 @@ module RailsTia
     def ci_adapter = dig('ci', 'adapter')
     def gitlab_options = dig('ci', 'gitlab')
     def github_actions_options = dig('ci', 'github_actions')
+
+    def constant_reads_enabled? = @constant_reads
 
     def object_allocations_required? = @allocation_mode == true
 

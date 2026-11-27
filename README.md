@@ -10,6 +10,8 @@ Use Ruby 3.3 or later with Minitest or `rspec-core` (`~> 3.9`). Add rails_tia to
 gem 'rails_tia', group: :test
 ```
 
+Bundler installs Rubydex for constant tracking even when the collector is disabled. If a precompiled Rubydex gem is unavailable, its source build also requires a Rust toolchain. See the [Rubydex platform packages](https://rubygems.org/gems/rubydex/versions/0.4.4).
+
 Installing the source gem requires make and, on CRuby, a C compiler. For a local path dependency, run `bundle install` and `bundle exec rake compile` in the gem checkout using the Ruby that generates the map.
 
 Run these commands from the application root to install dependencies and generate `.rails_tia.yml`.
@@ -159,7 +161,7 @@ To link an audit to its prediction, replace `--predicted specs.txt` with `--sele
 
 ## Tracking and limitations
 
-- **Ruby and ActiveRecord.** Line coverage records code exercised by the suite. Rails tracking adds model definitions observed through ActiveRecord. On CRuby, creating an object of a preloaded application class can also link the test to its definition, for example when a request instantiates a form with declarative validations. See the [allocation tracking settings](docs/configuration.md#dependency-tracking). RSpec also tracks definition files for each named `described_class` and its ancestors, even when an example executes no lines in those files. Reopened classes and unexecuted code can still need static rules.
+- **Ruby and ActiveRecord.** Line coverage records code exercised by the suite. Rails tracking adds model definitions observed through ActiveRecord. On CRuby, creating an object of a preloaded application class can also link the test to its definition, for example when a request instantiates a form with declarative validations. See the [allocation tracking settings](docs/configuration.md#dependency-tracking). Reads such as `Config::LIMIT` can link a test that executes the referencing method to the file defining the constant. RSpec also tracks definition files for each named `described_class` and its ancestors, even when an example executes no lines in those files. Reopened classes and unexecuted code can still need static rules.
 - **Views.** ActionView records rendered templates, partials, and layouts inside the project. Fragment and collection caching can hide nested renders. Disable caching during collection or cover those views with static mappings or full-run paths. New and unrendered templates also need rules.
 - **External dependencies.** Coverage cannot see dependencies on services or data files. Add project files that affect them to `full_run.paths`.
 
