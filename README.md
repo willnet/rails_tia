@@ -4,10 +4,10 @@ rails_tia uses coverage from a full RSpec or Minitest run on your default branch
 
 ## Installation
 
-Use Ruby 3.3 or later with Minitest or `rspec-core` (`~> 3.9`). While rails_tia is unreleased, point your application's Gemfile at a local checkout.
+Use Ruby 3.3 or later with Minitest or `rspec-core` (`~> 3.9`). Add rails_tia to your application's Gemfile.
 
 ```ruby
-gem 'rails_tia', path: '/path/to/rails_tia', group: :test
+gem 'rails_tia', group: :test
 ```
 
 Run these commands from the application root to install dependencies and generate `.rails_tia.yml`.

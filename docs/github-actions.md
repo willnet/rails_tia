@@ -13,7 +13,7 @@ ci:
 
 ## RSpec workflow
 
-Save this as `.github/workflows/rspec.yml`. Replace `main` with your target branch. The example uses the application's `.ruby-version`, the default map paths, and the RSpec preset. If the Gemfile uses a local checkout of rails_tia, make it available on the runner at that path before Bundler runs. Include any database or service setup your suite requires.
+Save this as `.github/workflows/rspec.yml`. Replace `main` with your target branch. The example uses the application's `.ruby-version`, the default map paths, and the RSpec preset. Include any database or service setup your suite requires.
 
 ```yaml
 name: RSpec
