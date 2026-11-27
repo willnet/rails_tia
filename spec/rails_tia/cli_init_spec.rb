@@ -35,7 +35,7 @@ RSpec.describe 'init' do
       expect(config.all_specs).to match_array(tests)
       expect(config.full_run_token).to eq('test/')
       %w[.rails_tia.yml test/test_helper.rb test/application_system_test_case.rb test/fixtures/users.yml
-         test/support/login.rb].each { |path| expect(config.full_run_path?(path)).to be(true) }
+         test/support/login.rb test/test_helpers/session_test_helper.rb].each { |path| expect(config.full_run_path?(path)).to be(true) }
       mapping = RailsTia::StaticMapping.new(config.static_mapping_rules, root: root)
       expect(mapping.specs_for('app/models/admin/user.rb')).to eq([model])
       expect(mapping.specs_for('app/controllers/admin/users_controller.rb')).to contain_exactly(controller, integration)

@@ -35,7 +35,7 @@ bundle exec rails-tia init
 
 This creates an editable `.rails_tia.yml`. If the project has a `test/` directory and no `spec/` directory, `init` generates the Minitest preset. Otherwise it generates the RSpec preset. Use `--runner minitest` or `--runner rspec` to choose explicitly, including before adding any tests.
 
-Changes to dependencies, Rails configuration, database files, layouts, shared partials, shared spec setup, and CI definitions trigger a full run. Static mappings select existing specs by convention. For example, a change to `app/controllers/admin/users_controller.rb` selects `spec/requests/admin/users_spec.rb` if it exists, even for a new controller. Other settings inherit the runtime defaults, including Rails tracking and CI adapter detection.
+Changes to dependencies, Rails configuration, database files, layouts, shared partials, shared test setup, and CI definitions trigger a full run. Static mappings use file names to find tests even for a new controller. For example, when `app/controllers/admin/users_controller.rb` changes, the RSpec preset selects `spec/requests/admin/users_spec.rb` if present. The Minitest preset selects `test/controllers/admin/users_controller_test.rb` and `test/integration/admin/users_test.rb` when those files exist. Other settings inherit the runtime defaults, including Rails tracking and CI adapter detection.
 
 Review the generated rules for your application's directory layout. Running `init` again keeps the existing file and exits with status 1. Without a configuration file, full-run paths, labels, tokens, and static mappings are empty. The following example shows additional settings you can customize.
 
@@ -170,7 +170,7 @@ Generate the Minitest preset from the application root:
 bundle exec rails-tia init --runner minitest
 ```
 
-The preset discovers `test/**/*_test.rb` and emits `test/` for a full run. Changes to shared test helpers and fixtures trigger the full suite. Model, controller and view changes select matching tests by convention, and frontend changes select the system tests under `test/system/`.
+The preset discovers `test/**/*_test.rb` and emits `test/` for a full run. Changes to shared test helpers and fixtures trigger the full suite. This includes the session helper that the Rails authentication generator creates under `test/test_helpers/`. Model, controller and view changes select matching tests by convention, and frontend changes select the system tests under `test/system/`.
 
 Generate the map from the full suite, including system tests under `test/`:
 

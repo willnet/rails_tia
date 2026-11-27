@@ -12,6 +12,7 @@ full_run:
     - app/views/layouts/**/*
     - app/views/shared/**/*
     - test/test_helper.rb
+    - test/test_helpers/**/*
     - test/application_system_test_case.rb
     - test/support/**/*
     - test/factories.rb

@@ -36,6 +36,28 @@ jobs:
       - name: Run RSpec
         run: bundle exec rake spec
 
+  minitest-6:
+    name: Minitest 6.1 (Rails 8.1)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      BUNDLE_GEMFILE: gemfiles/rails_8_1.gemfile
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@984c0c890880bbf811283d6f09c4607c62d210a4 # v1.323.0
+        with:
+          ruby-version: '4.0'
+          bundler-cache: true
+
+      - name: Run Minitest integration specs
+        run: bundle exec rspec spec/integration/minitest_spec.rb
+
   zizmor:
     name: zizmor
     runs-on: ubuntu-latest

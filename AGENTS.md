@@ -14,6 +14,13 @@ Update the README when a change affects user-facing behavior or configuration. W
 
 Use Ruby 3.3 or later. Install dependencies with `bundle install` and run the specs with `bundle exec rake spec`. CI tests Ruby 3.3, 3.4, and 4.0. See the Gemfile for the Rails, ActiveRecord, and SQLite dependencies used in tests.
 
+CI also runs the Minitest integration specs on Ruby 4.0 with Rails 8.1 and Minitest 6.1. Run the same specs locally from the repository root.
+
+```sh
+BUNDLE_GEMFILE=gemfiles/rails_8_1.gemfile bundle install
+BUNDLE_GEMFILE=gemfiles/rails_8_1.gemfile bundle exec rspec spec/integration/minitest_spec.rb
+```
+
 For code changes, review the specs for the affected behavior, run them, and run any necessary suite-wide checks. For documentation-only changes, check the text against the implementation and verify relative links, commands, and configuration examples.
 
 ## Design constraints
