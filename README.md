@@ -2,6 +2,8 @@
 
 rails_tia uses coverage from a full RSpec or Minitest run on your default branch to map Rails project files to tests. For each pull or merge request, it selects tests that match the map or a naming rule, plus any changed test files.
 
+> rails_tia is still under development (v0.1.0, unreleased). Its command-line interface and configuration options may change between releases.
+
 ## Installation
 
 Use Ruby 3.3 or later with Minitest or `rspec-core` (`~> 3.9`). Add rails_tia to your application's Gemfile.
