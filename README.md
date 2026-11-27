@@ -6,7 +6,7 @@ Test Impact Analysis for Rails applications. Build a dependency map from RSpec c
 
 ## Requirements and installation
 
-Ruby 3.3 or later and RSpec Core 3.9 or later are required. Add the gem to your test dependencies once it is available:
+Ruby 3.3 or later is required. To collect coverage with the RSpec formatter, your test bundle must also include `rspec-core` (`~> 3.9`), which `rspec` and `rspec-rails` normally provide. Add rails_tia to your test dependencies once it is available:
 
 ```ruby
 group :test do

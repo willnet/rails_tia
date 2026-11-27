@@ -4,7 +4,7 @@ These notes explain why rails_tia works the way it does and which behaviors futu
 
 ## Purpose and components
 
-Rails applications are the project's focus. The name leaves room to support other Rails test runners, such as Minitest.
+Rails applications are the project's focus. The RSpec formatter uses the application's copy of RSpec Core. Keeping RSpec out of the gem's runtime dependencies lets users install the CLI without RSpec and leaves room for other Rails test runners, such as Minitest.
 
 A full RSpec run on the default branch builds a dependency map at spec file granularity. Each change pipeline uses that map to select the spec files affected by its changed files.
 

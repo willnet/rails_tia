@@ -19,7 +19,6 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency 'rubyzip', '~> 3.0'
   spec.add_dependency 'rexml', '~> 3.2'
-  spec.add_dependency 'rspec-core', '~> 3.9'
 
   spec.metadata['rubygems_mfa_required'] = 'true'
 end
