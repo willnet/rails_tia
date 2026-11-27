@@ -27,8 +27,8 @@ For code changes, review the specs for the affected behavior, run them, and run 
 
 See the [design notes](docs/design.md) for the reasons behind these constraints.
 
-- Start coverage before the application loads. Keep `lines: true` and clear coverage at spec file boundaries to record dependencies per spec file.
-- Account for context and suite hook attribution, clearing coverage after eager loading, and dependencies detected through ActiveRecord. When changing the formatter, check the load-order and hook specs.
+- Start coverage before the application loads. Use cumulative line coverage and compare snapshots at RSpec file boundaries so SimpleCov can report the full run. Minitest clears counters at its existing test file boundaries.
+- Account for context and suite hook attribution, excluding eager-load hits from the dependency map, and dependencies detected through ActiveRecord. When changing the formatter, check the load-order and hook specs.
 - Distinguish a successful empty selection, a full-run fallback, and an error. Propagate errors when authentication or diff retrieval fails.
 - For parallel maps, check that the fragments from all nodes and processes are present and consistent. Preserve the existing merged map if retrieval fails.
 - Keep `select` output to one path per line or a single line containing the full-run token. Send diagnostics to standard error.

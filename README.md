@@ -162,6 +162,20 @@ The formatter writes `map-<node>-<process>.json.gz` fragments under `map.fragmen
 
 Use `RAILS_TIA_FRAGMENT_PATH` to override the fragment output path. `map merge --fragments DIR --output PATH` overrides the merge input directory and output file.
 
+### RSpec with SimpleCov
+
+The RSpec formatter works with Ruby's built-in line coverage. SimpleCov is optional. To generate both a SimpleCov report and a dependency map in one full-suite run, load your project's SimpleCov setup before `rails_tia/boot` and before Rails or Bootsnap loads:
+
+```bash
+bundle exec ruby -r./spec/coverage_setup -rrails_tia/boot -S rspec \
+  --require rails_tia/formatter --format RailsTia::Formatter
+bundle exec rails-tia map merge
+```
+
+In this example, `spec/coverage_setup.rb` contains your existing `require 'simplecov'` and `SimpleCov.start` configuration. If your suite starts SimpleCov in `rails_helper.rb`, move that setup to the separate file and require it from the helper for ordinary coverage runs. Loading it first lets SimpleCov choose the measurement modes. Keep ordinary line coverage enabled; you can also enable branch coverage. Branch-only and one-shot line coverage cannot identify all the spec files that execute a line.
+
+The formatter reads cumulative counters at spec file boundaries without resetting them. SimpleCov can then include hits from application loading and from the entire suite in its report. For an RSpec run without SimpleCov, use the original map-generation command above. Combined reporting is supported only with RSpec. The Minitest adapter clears counters between test files.
+
 ### Minitest
 
 Generate the Minitest preset from the application root:
@@ -356,7 +370,7 @@ If saving a history report or its archived map fails, rails_tia warns on standar
 
 | Type | What to compare across runs |
 | --- | --- |
-| `map_worker` | Spec and example counts, test failure status, number of Coverage reads (including the initial clear), cumulative seconds spent reading Coverage, scanning it and writing the fragment, fragment size, Ruby, test runner and Rails versions and active tracking features. `suite_seconds` covers formatter start through fragment write. Use CI job timings for end-to-end elapsed time across parallel workers. |
+| `map_worker` | Spec and example counts, test failure status, number of Coverage reads (including the initial read), cumulative seconds spent reading Coverage, scanning it and writing the fragment, fragment size, Ruby, test runner and Rails versions and active tracking features. `suite_seconds` covers formatter start through fragment write. Use CI job timings for end-to-end elapsed time across parallel workers. |
 | `map_merge` | Source, spec, edge and fragment counts, ten sources with the most associated specs, times for merging, writing the map and archiving it, fragment IDs and merged map ID. Produced by both `map merge` and `map fetch` with merging enabled. |
 | `select` | Changed files, selected specs, map ID, existing metrics and a stable full-run reason code. For selective runs, each changed file has counts of existing specs matched by the map and by static rules, plus whether the changed spec itself was selected. A spec can match more than one route. |
 | `audit` | Failed and missed spec paths from the full run, validation errors, number of parsed JUnit files and the prediction ID when using a selection report. Invalid input gives `valid: false` and `missed_specs: null`. |

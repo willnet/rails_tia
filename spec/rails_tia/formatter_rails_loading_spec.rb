@@ -67,7 +67,7 @@ RSpec.describe 'specロード後のRails依存補完' do
     config = RailsTia::Configuration.new({ 'rails' => { 'enabled' => true, 'action_view' => false } })
     allow(RailsTia).to receive(:config).and_return(config)
     allow(RailsTia::RailsSupport).to receive(:available?).and_return(true)
-    allow(Coverage).to receive(:result)
+    allow(Coverage).to receive(:peek_result).and_return({})
     expect(RailsTia::RailsSupport).to receive(:new).once.and_return(support)
     expect(support).to receive(:subscribe).once.and_return(support)
     formatter = RailsTia::Formatter.new(nil)

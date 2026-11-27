@@ -5,18 +5,6 @@ require 'rails_tia/described_class_support'
 
 module RailsTia
   # RSpec formatter that records coverage dependencies per spec file as map fragments.
-  #
-  #   RUBYOPT="-rrails_tia/boot" bundle exec rspec \
-  #     --require rails_tia/formatter --format RailsTia::Formatter
-  #
-  # How it works:
-  #   - Clear coverage once at suite start. With eager_load enabled, boot executes
-  #     every class definition; retaining those hits would link every spec to every file.
-  #   - Call Coverage.result(clear: true) whenever the spec file changes.
-  #     Each result then contains only files touched by that spec, avoiding cumulative diffs.
-  #
-  # Collect coverage per spec file because per-example collection increases calls by two orders of magnitude.
-  # Observed collection cost per spec file was 25–31 ms.
   class Formatter < CoverageCollector
     RSpec::Core::Formatters.register self, :start, :example_group_started, :example_group_finished, :example_started, :stop
 
@@ -26,7 +14,11 @@ module RailsTia
     end
 
     def start(_notification)
-      super()
+      @previous_lines = project_lines(super())
+    rescue StandardError
+      # RSpec only sends :stop if all :start callbacks return successfully.
+      unsubscribe
+      raise
     end
 
     # Group start arrives before before(:context); group finish arrives after after(:context).
@@ -55,6 +47,33 @@ module RailsTia
     end
 
     private
+
+    def read_coverage
+      # SimpleCov needs the cumulative counters, including hits from eager loading.
+      Coverage.peek_result
+    end
+
+    def project_lines(snapshot)
+      snapshot.each_with_object({}) do |(path, counts), files|
+        next unless path.start_with?(@root)
+
+        # Coverage.start without explicit modes returns line arrays directly.
+        lines = counts.is_a?(Array) ? counts : counts[:lines]
+        raise Error, 'RSpec mapping requires cumulative line coverage (lines: true)' unless lines
+
+        files[path] = lines
+      end
+    end
+
+    def project_files(snapshot)
+      previous = @previous_lines
+      @previous_lines = project_lines(snapshot)
+      @previous_lines.filter_map do |path, lines|
+        before = previous[path]
+        touched = before ? before != lines : lines.any? { |hits| hits.to_i.positive? }
+        path.delete_prefix(@root) if touched
+      end
+    end
 
     def spec_path_of(example)
       group_spec_path(example.example_group)
