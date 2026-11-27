@@ -19,9 +19,18 @@ RSpec.describe 'Dependencies on qualified constant reads' do
           end
         SOURCE
         readers = %w[spec/requests/first_spec.rb spec/requests/second_spec.rb]
-        readers.each do |file|
-          File.write(File.join(app.root, file), "RSpec.describe('limit') { it { expect(ThresholdPolicy.accepts?(7)).to be(true) } }")
-        end
+        File.write(File.join(app.root, readers.first), "RSpec.describe('limit') { it { expect(ThresholdPolicy.accepts?(7)).to be(true) } }")
+        File.write(File.join(app.root, 'spec/support/limit_checks.rb'), <<~SOURCE)
+          module LimitChecks
+            def self.accepts?(value)
+              value <= Config::LIMIT
+            end
+          end
+        SOURCE
+        File.write(File.join(app.root, readers.last), <<~SOURCE)
+          require_relative '../support/limit_checks'
+          RSpec.describe('limit through helper') { it { expect(LimitChecks.accepts?(7)).to be(true) } }
+        SOURCE
         File.write(File.join(app.root, 'spec/requests/label_spec.rb'), <<~SOURCE)
           RSpec.describe('label') { it { expect(ThresholdPolicy.label).to eq('threshold') } }
         SOURCE

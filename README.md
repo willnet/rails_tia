@@ -10,6 +10,8 @@ Use Ruby 3.3 or later with Minitest or `rspec-core` (`~> 3.9`). Add rails_tia to
 gem 'rails_tia', group: :test
 ```
 
+Bundler installs Rubydex for constant tracking even when the collector is disabled. If a precompiled Rubydex gem is unavailable, its source build also requires a Rust toolchain. See the [Rubydex platform packages](https://rubygems.org/gems/rubydex/versions/0.4.4).
+
 Installing the source gem requires make and, on CRuby, a C compiler. For a local path dependency, run `bundle install` and `bundle exec rake compile` in the gem checkout using the Ruby that generates the map.
 
 Run these commands from the application root to install dependencies and generate `.rails_tia.yml`.

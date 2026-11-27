@@ -25,8 +25,7 @@ module RailsTia
       @action_view_support ||= build_action_view_support
       @tracking = { active_record: !!@rails_support, action_view: !!@action_view_support }
       if @config.rails_enabled? && @config.constant_reads_enabled?
-        require 'rails_tia/constant_reads'
-        @constant_reads ||= ConstantReads.new(@config)
+        @constant_reads ||= build_constant_reads
       end
       @tracking[:constant_reads] = !!@constant_reads
       baseline = coverage_result
@@ -118,6 +117,17 @@ module RailsTia
           tracking: @tracking.merge(described_class: described_class),
         }
       end
+    end
+
+    def build_constant_reads
+      require 'rails_tia/constant_reads'
+      return ConstantReads.new(@config) unless @report
+
+      @report.measure(:constant_index) { ConstantReads.new(@config) }
+    rescue LoadError, StandardError => e
+      warn "[rails_tia] Cannot index constant reads: #{e.class}: #{e.message}; marking the map stale for a full run"
+      @map.mark_stale!
+      nil
     end
 
     def build_object_allocations

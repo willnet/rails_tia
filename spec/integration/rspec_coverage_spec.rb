@@ -40,6 +40,24 @@ RSpec.describe 'RSpec map collection with existing coverage' do
     RailsTia::Map.load(File.join(@root, 'map.json.gz')).specs_for('value.rb')
   end
 
+  it 'warns and saves a stale map on index failure, and skips loading the index when disabled' do
+    File.write(File.join(@root, 'rubydex.rb'), "raise LoadError, 'cannot load rubydex'")
+    setup = "$LOAD_PATH.unshift(__dir__)\nmodule Rails; end"
+    config_path = File.join(@root, '.rails_tia.yml')
+    map_path = File.join(@root, 'map.json.gz')
+    File.write(config_path, "rails:\n  object_allocations: false\n")
+    output, status = run_specs(setup)
+    expect(status).to be_success, output
+    expect(output).to include('cannot load rubydex', 'full run')
+    expect(RailsTia::Map.load(map_path).stale?(max_age_days: 1)).to be(true)
+
+    File.open(config_path, 'a') { |f| f.puts '  constant_reads: false' }
+    output, status = run_specs(setup)
+    expect(status).to be_success, output
+    expect(output).not_to include('cannot load rubydex')
+    expect(RailsTia::Map.load(map_path).stale?(max_age_days: 1)).to be(false)
+  end
+
   it 'falls back to the full suite when the default allocation tracker is unavailable', if: RUBY_ENGINE == 'ruby' do
     require 'rails_tia/native_extension'
     unavailable = File.join(@root, "#{RailsTia::ALLOCATION_EXTENSION}.rb")

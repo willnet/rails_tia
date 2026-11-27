@@ -14,7 +14,8 @@ module RailsTia
         absolute = File.absolute_path(dir, root)
         Dir.glob('**/*.rb', base: absolute).map { |file| File.join(absolute, file) }
       end.select(&included).to_set
-      tests = Dir.glob(config.spec_glob, base: root).map { |file| File.absolute_path(file, root) }.select(&included)
+      reader_globs = [config.spec_glob, '{spec,test}/support/**/*.rb', 'spec/{rails,spec}_helper.rb', 'test/test_helper.rb']
+      tests = Dir.glob(reader_globs, base: root).map { |file| File.absolute_path(file, root) }.select(&included)
 
       graph = Rubydex::Graph.new
       graph.index_all((app_files | tests).to_a)
