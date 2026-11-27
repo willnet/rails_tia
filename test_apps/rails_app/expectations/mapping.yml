@@ -77,7 +77,7 @@ cases:
     source: app/services/unused_value.rb
     exact_specs: []
   M3_M4_preloaded_model:
-    description: Only the two model specs issue named Account SQL or instantiate it; boot coverage is cleared.
+    description: Only the two model specs issue named Account SQL or instantiate it; boot coverage is excluded from the map.
     source: app/models/account.rb
     exact_specs:
       - spec/models/account_spec.rb

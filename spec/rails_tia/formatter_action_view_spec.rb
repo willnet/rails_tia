@@ -2,7 +2,7 @@ require 'rails_tia/formatter'
 
 RSpec.describe 'ActionView formatter lifecycle' do
   before do
-    allow(Coverage).to receive(:result).and_return({})
+    allow(Coverage).to receive(:peek_result).and_return({})
     allow(RailsTia::RailsSupport).to receive(:available?).and_return(true)
     allow(RailsTia::ActionViewSupport).to receive(:available?).and_return(true)
   end
@@ -48,5 +48,18 @@ RSpec.describe 'ActionView formatter lifecycle' do
       formatter.start(nil)
       expect { formatter.stop(Struct.new(:failed_examples).new([])) }.to raise_error(IOError, 'write failed')
     end
+  end
+
+  it 'unsubscribes both collectors if the RSpec coverage baseline is incompatible' do
+    config = RailsTia::Configuration.new({ 'rails' => { 'enabled' => true } })
+    allow(RailsTia).to receive(:config).and_return(config)
+    allow(Coverage).to receive(:peek_result).and_return({ File.join(config.root, 'app.rb') => { branches: {} } })
+    [RailsTia::RailsSupport, RailsTia::ActionViewSupport].each do |klass|
+      support = instance_double(klass, flush: [])
+      allow(klass).to receive(:new).and_return(support)
+      expect(support).to receive(:subscribe).and_return(support)
+      expect(support).to receive(:unsubscribe)
+    end
+    expect { RailsTia::Formatter.new(nil).start(nil) }.to raise_error(RailsTia::Error, /cumulative line coverage/)
   end
 end

@@ -4,6 +4,7 @@ gemspec
 
 gem 'rake'
 gem 'rspec', '~> 3.13'
+gem 'simplecov', require: false
 gem 'minitest', '~> 5.27'
 gem 'bootsnap', '~> 1.21'
 

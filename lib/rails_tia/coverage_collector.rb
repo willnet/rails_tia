@@ -24,10 +24,10 @@ module RailsTia
       @rails_support ||= build_rails_support
       @action_view_support ||= build_action_view_support
       @tracking = { active_record: !!@rails_support, action_view: !!@action_view_support }
-      # Discard lines executed during boot and spec loading.
-      coverage_result
+      baseline = coverage_result
       @rails_support&.flush
       @action_view_support&.flush
+      baseline
     end
 
     def switch_spec(spec)
@@ -42,9 +42,7 @@ module RailsTia
       @map.specs.each { |spec| @map.add(spec, @suite_sources) } if @suite_sources
       @map
     ensure
-      @rails_support&.unsubscribe
-      @action_view_support&.unsubscribe
-      @rails_support = @action_view_support = nil
+      unsubscribe
     end
 
     def count_example
@@ -73,16 +71,26 @@ module RailsTia
 
     private
 
+    def unsubscribe
+      @rails_support&.unsubscribe
+      @action_view_support&.unsubscribe
+      @rails_support = @action_view_support = nil
+    end
+
     def fragment_suffix
       parts = [ENV['CI_NODE_INDEX'], ENV['TEST_ENV_NUMBER']].map { |v| v.to_s.empty? ? nil : v }.compact
       parts.empty? ? Process.pid.to_s : parts.join('-')
     end
 
     def coverage_result
-      return Coverage.result(stop: false, clear: true) unless @report
+      return read_coverage unless @report
 
       @coverage_calls += 1
-      @report.measure(:coverage) { Coverage.result(stop: false, clear: true) }
+      @report.measure(:coverage) { read_coverage }
+    end
+
+    def read_coverage
+      Coverage.result(stop: false, clear: true)
     end
 
     def save_fragment_with_report(failed, runner, described_class)

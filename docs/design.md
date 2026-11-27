@@ -19,9 +19,13 @@ A full test run on the default branch builds a dependency map at test file granu
 
 ## Coverage collection and granularity
 
-Call `Coverage.start(lines: true)` before loading the application. At spec file boundaries, read coverage with `Coverage.result(stop: false, clear: true)`. Clearing the counters after each read lets the formatter identify files executed in that interval without comparing cumulative snapshots.
+Start line coverage before loading the application. The boot entry point reuses an active coverage session or calls `Coverage.start(lines: true)`. This lets an RSpec project's SimpleCov setup choose the measurement modes when loaded first, without adding a runtime dependency on SimpleCov.
 
-With `oneshot_lines`, clearing the results does not make Ruby record a previously executed line again. The map would attribute that line only to the first spec that ran it.
+The RSpec formatter reads `Coverage.peek_result` at suite start and at the existing spec and hook boundaries. It retains the previous line counts for project files. A changed array of cumulative counts means the file was executed in that interval, even if the same line ran in an earlier spec. For a newly observed file, at least one line must have a positive count. Branch counters can contribute to a SimpleCov report but do not enter the dependency map. This trades memory for the previous project line counts for the ability to collect a map without consuming another reporter's data.
+
+Ruby builds each snapshot for all instrumented files, including gems. When branch coverage is enabled, the snapshot also contains branch data. Filtering project paths reduces the formatter's comparison work, but Ruby still pays the cost of collecting the full snapshot.
+
+With `oneshot_lines`, Ruby records only the first hit on a line. Later specs that execute it would lose the dependency. RSpec collection requires ordinary line counts.
 
 On Ruby 3.4.12 with Bootsnap 1.21.1, loading `bootsnap/setup` after starting coverage causes initialization of the instruction sequence compile cache to fail. In Savanna's model, request, and system specs, disabling only the compile cache produced the same map as disabling Bootsnap entirely. The coverage entry point, `rails_tia/boot`, sets `DISABLE_BOOTSNAP_COMPILE_CACHE` so the load path cache remains available.
 
@@ -31,7 +35,7 @@ Reading coverage for every example would substantially increase the number of re
 
 Group start and finish notifications let the formatter attribute `before/after(:context)` hooks, including their `:all` aliases, to the spec that runs the group. Dependencies from `before/after(:suite)` apply to every spec. If a test or hook fails, the formatter saves the map with a stale timestamp so prediction falls back to a full run.
 
-The formatter clears coverage once at suite start. Keeping the class definition lines executed during Rails eager loading would make every spec appear to depend on every file.
+The RSpec formatter takes its first snapshot after spec loading as a baseline. Hits from Rails eager loading still appear in the cumulative coverage report and do not become dependencies of the first spec.
 
 ## Minitest attribution and Rails process workers
 
@@ -65,7 +69,7 @@ On Rails 7.2.4, a collection cache hit still reports its primary partial's ident
 
 ## Dependencies from `described_class`
 
-Issue #26 describes classes that contain only constants or declarations. Once the suite clears coverage, using such a class can leave no coverage hits. Plain Ruby classes and models used without SQL may also produce no ActiveRecord notifications. For each executed example, the collector reads the group's `described_class` and adds definition files for the named class or module and its `ancestors`. This works independently of Rails and is enabled by default. Set `described_class.enabled: false` to disable it.
+Issue #26 describes classes that contain only constants or declarations. After the class has loaded, using it can leave its line counts unchanged. Plain Ruby classes and models used without SQL may also produce no ActiveRecord notifications. For each executed example, the collector reads the group's `described_class` and adds definition files for the named class or module and its `ancestors`. This works independently of Rails and is enabled by default. Set `described_class.enabled: false` to disable it.
 
 At example start, the formatter completes the usual spec switch and coverage flush before calling `Map#add` for the runnable top-level group's spec. Shared examples contribute to the consuming spec, and contributions from multiple groups in one spec file form a union. The existing coverage reads, spec file granularity, and map format also serve this collector. Coverage tests continue to verify context hook attribution.
 
@@ -121,7 +125,7 @@ Each child process runs a temporary copy with its own database, map fragments, a
 
 When a job sets `RAILS_TIA_REPORT_DIR`, the formatter and CLI write a JSON report for each operation. The consuming CI workflow authenticates to its storage provider and transfers the files, so the gem needs no cloud SDK or CI artifact service. Each report has a UUID and is published by renaming a temporary file. Parallel jobs can upload to the same destination without filename collisions, and retrying an upload reuses the same key.
 
-The SHA-256 digest of the uncompressed map JSON identifies the map used for prediction. Maps from the same commit can differ in their dependencies or generation time. Hashing the JSON also works with existing maps and preserves their IDs across recompression. A merge archives the map under its ID and records the IDs of its fragments so a prediction can be traced back to the workers' timings and tracking settings. Timings use a monotonic clock and follow the existing coverage read and clear boundaries.
+The SHA-256 digest of the uncompressed map JSON identifies the map used for prediction. Maps from the same commit can differ in their dependencies or generation time. Hashing the JSON also works with existing maps and preserves their IDs across recompression. A merge archives the map under its ID and records the IDs of its fragments so a prediction can be traced back to the workers' timings and tracking settings. Timings use a monotonic clock and follow the coverage reads at runner boundaries.
 
 Passing the selection report to `audit` carries the prediction's UUID into the audit record. Two predictions can select the same specs from different changed files or maps and still be evaluated separately. A plain list of predicted paths carries no prediction ID.
 
