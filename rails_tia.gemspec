@@ -4,6 +4,8 @@ Gem::Specification.new do |spec|
   spec.name = 'rails_tia'
   spec.version = RailsTia::VERSION
   spec.authors = ['Shinichi Maeshima']
+  spec.email = 'netwillnet@gmail.com'
+  spec.homepage = 'https://github.com/willnet/rails_tia'
   spec.summary = 'Test Impact Analysis for Rails applications'
   spec.description = <<~DESC
     Build a dependency map from RSpec or Minitest coverage and select the test files
