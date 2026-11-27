@@ -12,7 +12,8 @@ Gem::Specification.new do |spec|
   spec.license = 'MIT'
   spec.required_ruby_version = '>= 3.3.0'
 
-  spec.files = Dir['lib/**/*.rb', 'lib/rails_tia/templates/*.yml', 'exe/*', 'README.md', 'LICENSE.txt']
+  spec.files = Dir['lib/**/*.rb', 'lib/rails_tia/templates/*.yml', 'exe/*',
+                   'skills/rails-tia/SKILL.md', 'docs/configuration.md', 'docs/github-actions.md', 'README.md', 'LICENSE.txt']
   spec.bindir = 'exe'
   spec.executables = %w(rails-tia)
   spec.require_paths = %w(lib)
