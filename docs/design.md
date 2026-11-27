@@ -75,6 +75,12 @@ The predictor takes the union of the map's reverse lookup, static mappings, and 
 
 A missing or stale map, a pipeline outside a merge request, a large change, or an explicit full-run request triggers the full suite. The consuming project configures full-run paths for changes such as gem dependencies, CI definitions, migrations, and external data. Static mappings can cover templates and new files.
 
+`init` writes these project-level rules as an editable Rails preset. It includes conventional paths even when they do not yet exist, so adding the first migration or request spec later needs no setup change. Keeping the preset in the generated file lets existing projects retain their selection policy across gem upgrades.
+
+Selection matches changed files by their project-relative paths. When generating a full-run rule for the configuration itself, `init` resolves the project root and the configuration's parent directory so that a directory symlink produces the same rule as the tracked path. Glob mappings likewise check the resolved location of each spec, since an in-project symlink can point into a different checkout.
+
+Ruby coverage cannot associate a JavaScript module or stylesheet with the browser scenarios that exercise it. The preset therefore maps frontend changes to both conventional RSpec browser suite directories. A separate `test_glob` field keeps source captures in existing `test` templates literal, including filenames that contain glob metacharacters. Glob results are shared across changed paths within one prediction and refreshed for the next prediction.
+
 A successful prediction can select zero specs. Authentication failures and errors retrieving diffs or artifacts must propagate as errors. Treating them as an empty change list could let a job succeed while skipping required tests.
 
 ## Parallel maps and artifact integrity

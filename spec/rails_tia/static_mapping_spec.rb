@@ -78,4 +78,30 @@ RSpec.describe RailsTia::StaticMapping do
         .to match_array %w(spec/models/user_spec.rb spec/jobs/import_job_spec.rb)
     end
   end
+
+  it 'reports absolute and parent paths in test_glob instead of selecting external specs' do
+    with_project(%w[app/spec/local_spec.rb outside_spec.rb]) do |workspace|
+      root = File.join(workspace, 'app')
+      ['../*_spec.rb', File.join(workspace, '*_spec.rb'), '{spec,..}/*_spec.rb'].each do |glob|
+        rule = { 'source' => 'frontend', 'test_glob' => glob }
+        expect { described_class.new([rule], root: root).specs_for('frontend') }
+          .to raise_error(described_class::InvalidGlob, /test_glob/)
+      end
+    end
+  end
+
+  it 'keeps internal symlinks and excludes specs reached through external file or directory symlinks' do
+    with_project(%w[app/spec/local_spec.rb app-extra/external_spec.rb]) do |workspace|
+      root = File.join(workspace, 'app')
+      external = File.join(workspace, 'app-extra')
+      File.symlink(root, File.join(workspace, 'linked-app'))
+      File.symlink('local_spec.rb', File.join(root, 'spec', 'alias_spec.rb'))
+      File.symlink(File.join(external, 'external_spec.rb'), File.join(root, 'spec', 'external_spec.rb'))
+      File.symlink(external, File.join(root, 'linked-specs'))
+      rule = { 'source' => 'frontend', 'test_glob' => ['spec/*_spec.rb', 'linked-specs/*_spec.rb'] }
+      mapping = described_class.new([rule], root: File.join(workspace, 'linked-app'))
+
+      expect(mapping.specs_for('frontend')).to contain_exactly('spec/local_spec.rb', 'spec/alias_spec.rb')
+    end
+  end
 end

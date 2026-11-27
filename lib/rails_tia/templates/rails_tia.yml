@@ -1,0 +1,45 @@
+full_run:
+  paths:
+    # Generated configuration path
+    - .rspec
+    - .ruby-version
+    - Gemfile
+    - Gemfile.lock
+    - config/**/*
+    - db/**/*
+    # New shared templates have no recorded consumers or matching request spec.
+    - app/views/layouts/**/*
+    - app/views/shared/**/*
+    - spec/spec_helper.rb
+    - spec/rails_helper.rb
+    - spec/support/**/*
+    - spec/factories.rb
+    - spec/factories/**/*
+    - spec/fixtures/**/*
+    - .github/workflows/**/*
+    - .gitlab-ci.yml
+
+# Naming conventions also cover new files that have no recorded dependencies yet.
+static_mapping:
+  - source: 'app/(.+)\.rb'
+    test: 'spec/%s_spec.rb'
+  - source: 'lib/(.+)\.rb'
+    test: 'spec/lib/%s_spec.rb'
+  - source: 'app/controllers/(.+)_controller\.rb'
+    test:
+      - 'spec/requests/%s_spec.rb'
+      - 'spec/requests/%s_request_spec.rb'
+  - source: 'app/views/(.+)/[^/]+'
+    test:
+      - 'spec/requests/%s_spec.rb'
+      - 'spec/requests/%s_request_spec.rb'
+  - source: 'app/views/(.+)'
+    test: 'spec/views/%s_spec.rb'
+  # Browser-side dependencies are invisible to Ruby coverage.
+  - source:
+      - 'app/(?:javascript|assets)/.+'
+      - 'vendor/javascript/.+'
+      - 'package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?'
+    test_glob:
+      - 'spec/system/**/*_spec.rb'
+      - 'spec/features/**/*_spec.rb'

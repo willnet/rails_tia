@@ -1,3 +1,4 @@
+require 'json'
 require 'optparse'
 require 'rails_tia'
 require 'rails_tia/audit'
@@ -11,6 +12,7 @@ module RailsTia
     USAGE = <<~TEXT.freeze
       Usage: rails-tia <command> [options]
 
+        init                  Create a configuration for a Rails application
         select                Print selected specs (or full_run_token for a full run)
         map merge             Merge map fragments into a single map
         map fetch             Fetch and merge map fragments from CI
@@ -37,6 +39,7 @@ module RailsTia
     def run
       command = @argv.shift
       case command
+      when 'init' then init
       when 'select' then select
       when 'map' then map_command
       when 'audit' then audit
@@ -48,12 +51,39 @@ module RailsTia
         1
       end
     rescue Ci::Gitlab::AuthenticationError, Ci::GithubActions::Error, Http::Error, Ci::Git::CommandError,
-           Ci::UnknownAdapterError, Ci::Base::UnsupportedError, Map::FormatError, RunReport::Error, Errno::ENOENT => e
+           Ci::UnknownAdapterError, Ci::Base::UnsupportedError, Map::FormatError, RunReport::Error,
+           StaticMapping::InvalidGlob, Errno::ENOENT => e
       warn "[rails_tia] #{e.message}"
       1
     end
 
     private
+
+    def init
+      parse!('init')
+      path = config_path
+      template = File.read(File.join(__dir__, 'templates', 'rails_tia.yml'))
+      contents = template.sub("    # Generated configuration path\n") { config_path_rule(path) }
+      File.open(path, 'wx') { |file| file.write(contents) }
+      puts "Created #{path}"
+      0
+    rescue Errno::EEXIST
+      warn "[rails_tia] #{path} already exists"
+      1
+    rescue SystemCallError => e
+      warn "[rails_tia] #{e.message}"
+      1
+    end
+
+    def config_path_rule(path)
+      root_prefix = File.join(File.realpath(File.expand_path(root)), '')
+      absolute = File.join(File.realpath(File.dirname(path)), File.basename(path))
+      return '' unless absolute.start_with?(root_prefix)
+
+      relative = absolute.delete_prefix(root_prefix)
+      pattern = relative.gsub(/[\\*?\[\]{}]/) { |char| "\\#{char}" }
+      "    - #{JSON.generate(pattern)}\n"
+    end
 
     def select
       parse!('select') do |parser|
@@ -205,7 +235,7 @@ module RailsTia
     end
 
     def config_status
-      path = @options[:config] || File.join(root, Configuration::DEFAULT_PATH)
+      path = config_path
       File.exist?(path) ? [true, path] : [false, "#{path} not found (using defaults)"]
     end
 
@@ -235,7 +265,7 @@ module RailsTia
     def static_mapping_status
       StaticMapping.new(config.static_mapping_rules, root: root)
       [true, "#{config.static_mapping_rules.size} rules"]
-    rescue RegexpError, KeyError => e
+    rescue RegexpError, KeyError, StaticMapping::InvalidGlob => e
       [false, e.message]
     end
 
@@ -253,7 +283,11 @@ module RailsTia
     end
 
     def config
-      @config ||= Configuration.load(@options[:config], root: root)
+      @config ||= Configuration.load(config_path, root: root)
+    end
+
+    def config_path
+      @options[:config] || File.join(File.expand_path(root), Configuration::DEFAULT_PATH)
     end
 
     # Allow changed files to be supplied externally.
