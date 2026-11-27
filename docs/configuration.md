@@ -65,10 +65,18 @@ These settings apply during map collection.
 
 | Key | Default | Purpose |
 | --- | --- | --- |
-| `rails.enabled` | `auto` | Enable Rails tracking when Rails is loaded. Set to `true` to enable available integrations explicitly or `false` to disable both Rails trackers. |
+| `rails.enabled` | `auto` | Enable Rails tracking when Rails is loaded. Set to `true` to enable available integrations explicitly or `false` to disable all Rails trackers. |
 | `rails.active_record` | `true` | Track project model definitions identified by ActiveRecord query and instantiation events. |
 | `rails.action_view` | `true` | Track project templates, partials, and layouts rendered through ActionView. |
+| `rails.object_allocations` | `auto` | Track allocations on CRuby when Rails support is enabled. Set to `false` to disable the process-wide hook or `true` to require the native extension. |
+| `rails.app_dirs` | `[]` | Additional project-relative directories for allocation tracking alongside `app/` and `lib/`, for example `[components, engines/billing]`. |
 | `described_class.enabled` | `true` | Track the definition files of an RSpec example's named `described_class` and its ancestors. Works independently of Rails. |
+
+Regenerate the map to record allocation dependencies. Creating an ordinary Ruby object or Struct links its test file to the definitions of its named class and ancestors under the configured directories. This includes named ancestors of anonymous subclasses. Other collectors keep their own path rules.
+
+Construction counts even if the test never uses the object. Shared mixins can have many consumers, and suite-hook allocations apply to every test. Background-thread allocations belong to the test or hook active at the time, so join asynchronous work before the test finishes. Reusing an instance created during boot or allocating other storage types such as Hash subclasses can leave dependencies unrecorded. Use static mappings for known consumers.
+
+If the extension fails to load in auto mode on CRuby, map generation warns and marks the map stale for a full run. The legacy `rails.form_allocations` key is accepted with a deprecation warning when `rails.object_allocations` is omitted.
 
 ## CI adapters
 

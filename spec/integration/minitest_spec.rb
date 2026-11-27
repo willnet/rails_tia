@@ -62,6 +62,38 @@ RSpec.describe 'Minitest map collection' do
     end
   end
 
+  it 'maps a preloaded form to the test that allocates it in a Rails worker', if: RUBY_ENGINE == 'ruby' do
+    with_app do |app|
+      FileUtils.mkdir_p(File.join(app.root, 'app/forms'))
+      File.write(File.join(app.root, 'app/forms/contact_form.rb'), "class ContactForm; end\n")
+      File.write(File.join(app.root, 'app/forms/summary_form.rb'), "class SummaryForm; end\n")
+      File.open(File.join(app.root, 'test/test_helper.rb'), 'a') { |f| f.puts "Minitest.after_run { SummaryForm.new }" }
+      File.write(File.join(app.root, 'app/forms/boot_form.rb'), "class BootForm; end\n")
+      File.write(File.join(app.root, 'test/contact_test.rb'), <<~RUBY)
+        require_relative 'test_helper'
+        BootForm.new
+        class ContactTest < ActiveSupport::TestCase
+          def test_contact
+            assert_instance_of ContactForm, ContactForm.new
+          end
+        end
+      RUBY
+      output, status = run_tests(app, parallel: 'processes')
+      expect(status).to be_success, output
+      map = fragment(app)
+      expect(map.specs_for('app/forms/contact_form.rb')).to contain_exactly('test/contact_test.rb')
+      expect(map.specs_for('app/forms/summary_form.rb')).to eq(map.specs)
+      expect(map.specs_for('app/forms/boot_form.rb')).to be_empty
+
+      File.open(File.join(app.root, '.rails_tia.yml'), 'a') { |f| f.puts "rails:\n  object_allocations: false" }
+      output, status = run_tests(app, parallel: 'processes')
+      expect(status).to be_success, output
+      disabled = fragment(app)
+      expect(disabled.specs_for('app/forms/contact_form.rb')).to be_empty
+      expect(disabled.specs_for('app/forms/summary_form.rb')).to be_empty
+    end
+  end
+
   it 'invalidates the previous fragment before loading a suite that fails to boot' do
     with_app do |app|
       output, status = run_tests(app)

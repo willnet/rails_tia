@@ -40,6 +40,25 @@ RSpec.describe 'RSpec map collection with existing coverage' do
     RailsTia::Map.load(File.join(@root, 'map.json.gz')).specs_for('value.rb')
   end
 
+  it 'falls back to the full suite when the default allocation tracker is unavailable', if: RUBY_ENGINE == 'ruby' do
+    require 'rails_tia/native_extension'
+    unavailable = File.join(@root, "#{RailsTia::ALLOCATION_EXTENSION}.rb")
+    FileUtils.mkdir_p(File.dirname(unavailable))
+    File.write(unavailable, "raise LoadError, 'allocation extension missing'")
+    setup = "$LOAD_PATH.unshift(__dir__)\nmodule Rails; end"
+    map_path = File.join(@root, 'map.json.gz')
+
+    output, status = run_specs(setup)
+    expect(status).to be_success, output
+    expect(output).to include('allocation extension missing', 'full run')
+    expect(RailsTia::Map.load(map_path).stale?(max_age_days: 1)).to be(true)
+
+    File.write(File.join(@root, '.rails_tia.yml'), "rails:\n  object_allocations: 'true'\n")
+    output, status = run_specs(setup)
+    expect(status).not_to be_success
+    expect(output).to include('Cannot load object allocation tracking')
+  end
+
   it 'preserves the SimpleCov line and branch counts, including hits before the suite starts' do
     results = [false, true].map do |mapping|
       dir = mapping ? 'combined' : 'simplecov'

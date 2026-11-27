@@ -56,7 +56,9 @@ jobs:
           bundler-cache: true
 
       - name: Run Minitest integration specs
-        run: bundle exec rspec spec/integration/minitest_spec.rb
+        run: |
+          bundle exec rake compile
+          bundle exec rspec spec/integration/minitest_spec.rb
 
   zizmor:
     name: zizmor

@@ -28,7 +28,7 @@ class RailsAppRunner
     if mode == :without_ar
       path = File.join(root, '.rails_tia.yml')
       data = YAML.safe_load_file(path)
-      data['rails'] = { 'active_record' => false }
+      data['rails'] = { 'active_record' => false, 'object_allocations' => false }
       File.write(path, YAML.dump(data))
     end
   end

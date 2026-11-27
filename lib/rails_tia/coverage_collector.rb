@@ -27,6 +27,9 @@ module RailsTia
       baseline = coverage_result
       @rails_support&.flush
       @action_view_support&.flush
+      @object_allocations ||= build_object_allocations
+      @object_allocations&.start
+      @tracking[:object_allocations] = !!@object_allocations
       baseline
     end
 
@@ -72,6 +75,8 @@ module RailsTia
     private
 
     def unsubscribe
+      @object_allocations&.stop
+      @object_allocations = nil
       @rails_support&.unsubscribe
       @action_view_support&.unsubscribe
       @rails_support = @action_view_support = nil
@@ -110,6 +115,20 @@ module RailsTia
       end
     end
 
+    def build_object_allocations
+      return unless @config.rails_enabled? && @config.object_allocations_enabled?
+
+      require 'rails_tia/object_allocations'
+      ObjectAllocations.new(@root, directories: @config.app_dirs)
+    rescue LoadError => e
+      message = "Cannot load object allocation tracking: #{e.message}"
+      raise Error, message if @config.object_allocations_required?
+
+      warn "[rails_tia] #{message}; marking the map stale for a full run"
+      @map.mark_stale!
+      nil
+    end
+
     def build_rails_support
       return nil unless @config.rails_enabled? && @config.active_record_enabled?
       return nil unless RailsSupport.available?
@@ -130,10 +149,11 @@ module RailsTia
     end
 
     def flush
+      allocated = @object_allocations&.flush || []
       result = coverage_result
       touched = (@rails_support&.flush || []) + (@action_view_support&.flush || [])
       files = @report ? @report.measure(:scan) { project_files(result) } : project_files(result)
-      sources = files + touched
+      sources = files + touched + allocated
       if @current_spec.nil?
         # Attribute before/after(:suite) dependencies to every spec, not just the first or last.
         (@suite_sources ||= Set.new).merge(sources)

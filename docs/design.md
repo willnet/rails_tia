@@ -67,6 +67,36 @@ The formatter subscribes in `start`, after spec loading, discards dependencies a
 
 On Rails 7.2.4, a collection cache hit still reports its primary partial's identifier. A fragment or collection cache hit can skip rendering a nested partial or its layout, so no rendering notification identifies those files. The rendering tests cover this limit. The collector does not copy dependencies from another spec that populated the cache. Applications that rely on nested dependencies can disable rendering caches during map generation, add static rules, or configure full-run paths. Static mappings still cover new or unrendered templates. Continue auditing selection against full-suite runs.
 
+## Allocations of preloaded classes
+
+A request can instantiate a preloaded form and use its declarative validations
+without executing a line in the form definition. With `rails.object_allocations`
+enabled, a CRuby extension subscribes to `RUBY_INTERNAL_EVENT_NEWOBJ` during
+map generation. The callback records class identities for ordinary objects and
+Structs in a native set. It avoids Ruby method calls while an object is being
+allocated. The set pins its class keys during GC and compaction.
+
+Recording each allocated class once per collection interval and deferring
+definition file lookup until the interval ends follows the approach used by
+[Datadog's allocation tracker in datadog-ci 1.44.1](https://github.com/DataDog/datadog-ci-rb/blob/d26370ed2de1077d0f558386aa6739cf5f38b864/ext/datadog_ci_native/datadog_cov.c#L254-L363).
+
+Both runners drain the set at their existing spec and hook boundaries. The
+definition resolver used for described classes identifies each named class and
+its ancestors. For allocations, it checks each definition against `app/`,
+`lib/`, and `rails.app_dirs`. This keeps preloaded
+classes from a local bundle out of allocation-derived edges by default while
+allowing projects to include code in engines or other directories. Line coverage
+and RSpec described-class tracking keep their existing project-wide scope. Starting
+after the boot baseline keeps startup allocations out of the first test. Each fork has its own copy of
+the collector. The Rails parallel parent keeps collecting through suite hooks
+such as Minitest's `after_run`, which contribute to every test file. Allocation tracking reuses the
+coverage snapshots, map format and predictor.
+
+This observes construction independently of the methods called on the object. It can select construction-only consumers and miss uses of an
+instance allocated before the test. Anonymous subclasses contribute their named ancestors without being retained in the resolver cache. On CRuby, tracking starts by default when Rails support is enabled.
+A missing extension in auto mode makes the map stale so an incomplete map cannot guide selection. Applications can opt
+out to avoid the process-wide allocation hook. Other Ruby engines lack the required event.
+
 ## Dependencies from `described_class`
 
 Issue #26 describes classes that contain only constants or declarations. After the class has loaded, using it can leave its line counts unchanged. Plain Ruby classes and models used without SQL may also produce no ActiveRecord notifications. For each executed example, the collector reads the group's `described_class` and adds definition files for the named class or module and its `ancestors`. This works independently of Rails and is enabled by default. Set `described_class.enabled: false` to disable it.
@@ -77,7 +107,7 @@ The collector resolves each part of the constant name without searching inherite
 
 Each formatter caches results by class object identity for its own lifetime. Repeated examples can reuse the ancestor list and definition lookups for a target, and different targets can reuse lookups for common ancestors. Redefining a class under the same name gives it a different object identity and a separate cache entry.
 
-The cache reflects the ancestors and definition locations at first use. It can miss ancestors added later to the same object, definitions spread across files that reopen a class, and dynamic dependencies on paths that never execute. Continue using static mappings, ActiveRecord tracking, and full-suite audits alongside this collector.
+A missing, replaced, or autoload-pending constant can become resolvable after a test restores it. The resolver retries these lookups and only caches a complete ancestor result. The cache reflects the ancestors and definition locations at the first complete lookup. It can miss ancestors added later to the same object, definitions spread across files that reopen a class, and dynamic dependencies on paths that never execute. Continue using static mappings, ActiveRecord tracking, and full-suite audits alongside this collector.
 
 ## Spec selection and full-run fallback
 
@@ -117,7 +147,7 @@ Selective runs cannot reveal failures in specs they omit. Use `audit` to compare
 
 To compare collectors, the fixture keeps separate handwritten expectations for the collected map and for the predictor's selected specs. Exact dependency sets for dedicated source files catch both missing consumers and unrelated specs added by mistake. For suite hooks, the expected set of all specs comes from the fixture's file list, independently of the map. Template selection also runs against a map with runtime dependencies removed to isolate the contribution of static rules.
 
-The fixture loads its model before the suite starts. Comparing normal loading, eager loading, and runs with ActiveRecord tracking disabled shows which dependencies come from executing the model definition on first load and which come from the ActiveRecord collector. Shared data setup avoids SQL carrying a model name so setup alone cannot give every spec a model dependency.
+The fixture loads its model before the suite starts. Comparing normal loading, eager loading, and runs with both ActiveRecord and object allocation tracking disabled shows which dependencies come from executing the model definition on first load and which come from the ActiveRecord collector. Shared data setup avoids SQL carrying a model name so setup alone cannot give every spec a model dependency.
 
 Each child process runs a temporary copy with its own database, map fragments, and environment. Normal and eager-loading runs exercise definition order and fixed seeds. Each run checks several cases to limit startup costs. Mutation tests retain the map from the passing baseline, then check structured assertion failures in both the full and selected runs after the change. This ensures that a startup exception cannot count as detecting the injected fault. The fixture measures correctness. Performance needs to be evaluated separately.
 

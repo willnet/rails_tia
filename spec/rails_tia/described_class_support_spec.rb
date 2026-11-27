@@ -36,18 +36,32 @@ RSpec.describe RailsTia::DescribedClassSupport do
 
   it 'deduplicates files and reuses definition locations for shared ancestors' do
     Dir.mktmpdir do |root|
+      load_source(root, 'base.rb', 'class DescribedTargets::Base; end')
       load_source(root, 'targets.rb', <<~SOURCE)
         module DescribedTargets
-          class Base; end
           class First < Base; end
           class Second < Base; end
+          module Helpers; end
+          Second.include(Helpers)
         end
       SOURCE
       support = described_class.new(root: root)
-      allow(DescribedTargets).to receive(:const_source_location).and_call_original
-      expect(DescribedTargets).to receive(:const_source_location).with('Base', false).once.and_call_original
-      expect(support.files_for(DescribedTargets::First)).to eq(['targets.rb'])
-      expect(support.files_for(DescribedTargets::Second)).to eq(['targets.rb'])
+      expect(support.files_for(DescribedTargets::First)).to eq(%w[targets.rb base.rb])
+      hide_const('DescribedTargets::Base')
+      expect(support.files_for(DescribedTargets::Second)).to eq(%w[targets.rb base.rb])
+    end
+  end
+
+  it 'retries a superclass lookup after a temporary replacement is restored' do
+    Dir.mktmpdir do |root|
+      load_source(root, 'base.rb', 'class DescribedTargets::Base; end')
+      load_source(root, 'child.rb', 'class DescribedTargets::Child < DescribedTargets::Base; end')
+      support = described_class.new(root: root)
+      RSpec::Mocks.with_temporary_scope do
+        stub_const('DescribedTargets::Base', Class.new)
+        expect(support.files_for(DescribedTargets::Child)).to eq(['child.rb'])
+      end
+      expect(support.files_for(DescribedTargets::Child)).to eq(%w[child.rb base.rb])
     end
   end
 

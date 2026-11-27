@@ -3,3 +3,7 @@
 /gemfiles/*.gemfile.lock
 /pkg/
 /tmp/
+/lib/rails_tia/allocated_classes.bundle
+/lib/rails_tia/allocated_classes.so
+/lib/rails_tia/allocated_classes.dll
+/lib/rails_tia/*/*/allocated_classes.*

@@ -31,6 +31,8 @@ module RailsTia
         'enabled' => 'auto',
         'active_record' => true,
         'action_view' => true,
+        'object_allocations' => 'auto',
+        'app_dirs' => [],
       },
       'ci' => {
         'adapter' => 'auto',
@@ -58,11 +60,24 @@ module RailsTia
       end
     end
 
-    attr_reader :root
+    attr_reader :root, :app_dirs
 
     def initialize(raw, root: Dir.pwd)
       @root = File.expand_path(root)
-      @data = deep_merge(DEFAULTS, raw || {})
+      raw ||= {}
+      @data = deep_merge(DEFAULTS, raw)
+      @app_dirs = build_app_dirs
+      rails = raw['rails']
+      if rails.is_a?(Hash) && rails.key?('form_allocations') && !rails.key?('object_allocations')
+        warn '[rails_tia] rails.form_allocations is deprecated; use rails.object_allocations to configure tracking for all application classes'
+        @data.fetch('rails')['object_allocations'] = rails.fetch('form_allocations')
+      end
+      @allocation_mode = case dig('rails', 'object_allocations')
+                         when true, 'true' then true
+                         when false, 'false' then false
+                         when 'auto' then 'auto'
+                         else raise Error, 'rails.object_allocations must be true, false or auto'
+                         end
     end
 
     def spec_glob = @data.fetch('spec_glob')
@@ -84,6 +99,12 @@ module RailsTia
     def ci_adapter = dig('ci', 'adapter')
     def gitlab_options = dig('ci', 'gitlab')
     def github_actions_options = dig('ci', 'github_actions')
+
+    def object_allocations_required? = @allocation_mode == true
+
+    def object_allocations_enabled?
+      @allocation_mode == 'auto' ? RUBY_ENGINE == 'ruby' : @allocation_mode
+    end
 
     def active_record_enabled? = dig('rails', 'active_record')
     def action_view_enabled? = dig('rails', 'action_view')
@@ -112,6 +133,22 @@ module RailsTia
     end
 
     private
+
+    def build_app_dirs
+      extra = dig('rails', 'app_dirs')
+      unless extra.is_a?(Array) && extra.all? { |dir| valid_application_directory?(dir) }
+        raise Error, 'rails.app_dirs must be a list of project-relative directories without .. components'
+      end
+
+      (%w[app lib] + extra).freeze
+    end
+
+    def valid_application_directory?(dir)
+      return false unless dir.is_a?(String) && !dir.strip.empty? && !dir.include?("\0")
+
+      path = File::ALT_SEPARATOR ? dir.tr(File::ALT_SEPARATOR, '/') : dir
+      !File.absolute_path?(path) && !path.split('/').include?('..')
+    end
 
     def dig(*keys) = @data.dig(*keys)
 
