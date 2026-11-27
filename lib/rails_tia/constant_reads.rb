@@ -1,39 +1,30 @@
 require 'prism'
+require 'rubydex'
 require 'set'
 
 module RailsTia
-  # Join literal qualified reads to assignments without evaluating application constants.
   class ConstantReads
     def initialize(config)
-      definitions = Hash.new { |hash, key| hash[key] = Set.new }
-      reads = Hash.new { |hash, key| hash[key] = [] }
       root = File.join(config.root, '')
-      project_root = File.join(File.realpath(config.root), '')
-      roots = config.app_dirs.map { |dir| File.absolute_path(dir, config.root) }.uniq
-      app_files = roots.flat_map do |dir|
-        Dir.glob('**/*.rb', base: dir).map { |file| File.join(dir, file) }
-      end.to_set
-      test_files = Dir.glob(config.spec_glob, base: config.root).map { |file| File.absolute_path(file, config.root) }
-      (app_files | test_files).each do |path|
-        next unless path.end_with?('.rb') && path.start_with?(root) && File.file?(path)
-        next unless File.realpath(path).start_with?(project_root)
-
-        parsed = Prism.parse_file(path)
-        next unless parsed.success?
-
-        file = path.delete_prefix(root)
-        assignments = app_files.include?(path) ? definitions : nil
-        Source.new(file, assignments, reads[file]).visit(parsed.value)
+      real_root = File.join(File.realpath(config.root), '')
+      included = lambda do |path|
+        path.start_with?(root) && path.end_with?('.rb') && File.file?(path) && File.realpath(path).start_with?(real_root)
       end
+      app_files = config.app_dirs.flat_map do |dir|
+        absolute = File.absolute_path(dir, root)
+        Dir.glob('**/*.rb', base: absolute).map { |file| File.join(absolute, file) }
+      end.select(&included).to_set
+      tests = Dir.glob(config.spec_glob, base: root).map { |file| File.absolute_path(file, root) }.select(&included)
 
+      graph = Rubydex::Graph.new
+      graph.index_all((app_files | tests).to_a)
+      graph.resolve
       @dependencies = {}
-      reads.each do |file, references|
-        groups = {}
-        references.uniq.each do |name, range|
-          sources = definitions.fetch(name, []).reject { |source| source == file }
-          (groups[range] ||= Set.new).merge(sources) unless sources.empty?
-        end
-        @dependencies[file] = groups unless groups.empty?
+      methods = {}
+      graph.declarations.each do |declaration|
+        next unless declaration.is_a?(Rubydex::Constant) || declaration.is_a?(Rubydex::ConstantAlias)
+
+        index_references(declaration, app_files, root, methods)
       end
     end
 
@@ -50,66 +41,43 @@ module RailsTia
       end
     end
 
-    class Source
-      def initialize(file, definitions, reads)
-        @file = file
-        @definitions = definitions
-        @reads = reads
-      end
+    private
 
-      def visit(node, scope = '', range = nil)
-        case node
-        when Prism::ClassNode, Prism::ModuleNode
-          name = constant_name(node.constant_path)
-          if node.is_a?(Prism::ClassNode) && node.superclass
-            visit(node.superclass, scope, range)
-          end
-          if name && node.body
-            nested = name.start_with?('::') ? name : "#{scope}::#{name}"
-            visit(node.body, nested, nil)
-          end
-          return
-        when Prism::DefNode
-          body = node.body || node
-          range = body.location.start_line..body.location.end_line
-        when Prism::ConstantWriteNode
-          record_definition(node.name.to_s, scope)
-        when Prism::ConstantPathWriteNode
-          record_definition(constant_name(node.target), scope)
-          visit(node.value, scope, range)
-          return
-        when Prism::ConstantPathNode
-          name = constant_name(node)
-          @reads << [name, range] if name
-        end
-        node.compact_child_nodes.each { |child| visit(child, scope, range) }
-      end
+    def index_references(declaration, app_files, root, methods)
+      definitions = declaration.definitions.filter_map do |definition|
+        location = definition.location
+        next unless location.uri.start_with?('file:')
 
-      private
+        path = location.to_file_path
+        path.delete_prefix(root) if app_files.include?(path)
+      end.uniq
+      return if definitions.empty?
 
-      def constant_name(node)
-        case node
-        when Prism::ConstantReadNode then node.name.to_s
-        when Prism::ConstantPathNode
-          return "::#{node.name}" unless node.parent
+      declaration.references.each do |reference|
+        location = reference.location
+        next unless location.uri.start_with?('file:')
 
-          parent = constant_name(node.parent)
-          "#{parent}::#{node.name}" if parent
-        end
-      end
+        path = location.to_file_path
+        file = path.delete_prefix(root)
+        sources = definitions - [file]
+        next if sources.empty?
 
-      def record_definition(name, scope)
-        return unless @definitions && name
-
-        full = name.start_with?('::') ? name : "#{scope}::#{name}"
-        @definitions[full] << @file
-        # A relative read can resolve in an enclosing namespace.
-        parts = full.delete_prefix('::').split('::')
-        parts.each_index do |index|
-          @definitions[parts[index..].join('::')] << @file
-        end
+        ranges = methods[path] ||= method_ranges(Prism.parse_file(path).value)
+        line = location.start_line + 1
+        body = ranges.find { |definition_range, _| definition_range.cover?(line) }&.last
+        groups = (@dependencies[file] ||= {})
+        (groups[body] ||= Set.new).merge(sources)
       end
     end
-    private_constant :Source
+
+    def method_ranges(node, ranges = [])
+      # Prefer the innermost method when Ruby definitions are nested.
+      node.compact_child_nodes.each { |child| method_ranges(child, ranges) }
+      if node.is_a?(Prism::DefNode)
+        body = node.body || node
+        ranges << [node.location.start_line..node.location.end_line, body.location.start_line..body.location.end_line]
+      end
+      ranges
+    end
   end
 end

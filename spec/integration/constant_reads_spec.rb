@@ -4,8 +4,9 @@ RSpec.describe 'Dependencies on qualified constant reads' do
   [:normal, :eager].each do |mode|
     it "selects the failing readers and skips another method in the same file (#{mode})" do
       RailsAppRunner.with_app(mode: mode) do |app|
-        definition = 'app/services/config.rb'
-        File.write(File.join(app.root, definition), "module Config; LIMIT = 10; end\n")
+        definition = 'app/services/base_config.rb'
+        File.write(File.join(app.root, definition), "class BaseConfig; LIMIT = 10; end\n")
+        File.write(File.join(app.root, 'app/services/config.rb'), "class Config < BaseConfig; end\n")
         File.write(File.join(app.root, 'app/services/threshold_policy.rb'), <<~SOURCE)
           class ThresholdPolicy
             def self.accepts?(value)

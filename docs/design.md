@@ -97,9 +97,9 @@ instance allocated before the test. Anonymous subclasses contribute their named 
 A missing extension in auto mode makes the map stale so an incomplete map cannot guide selection. Applications can opt
 out to avoid the process-wide allocation hook. Other Ruby engines lack the required event.
 
-## Qualified constant reads
+## Constant reads
 
-A scalar such as `Config::LIMIT` can affect a request without executing its assignment or allocating an instance of an application class. During map generation, Prism indexes simple constant assignments in application directories and literal qualified reads in those directories and runnable tests. Absolute reads match full names. Relative reads match suffixes to allow for enclosing namespaces. No lookup invokes application code or triggers an autoload.
+A scalar such as `Config::LIMIT` can affect a request without executing its assignment or allocating an instance of an application class. Rubydex indexes application directories and runnable tests at map startup. Its resolved references connect each constant assignment to its readers using lexical nesting and ancestor relationships. For example, a read of `ChildConfig::LIMIT` can depend on a definition of `BaseConfig::LIMIT`. The lookup does not execute application code. For each reader with a cross-file dependency, Prism provides the enclosing method and body line ranges. The collector keeps the resulting file and line-range index for the suite and releases the analysis graph.
 
 The index groups matching definition files by reader file and method body line range. RSpec checks those ranges against cumulative line deltas. Minitest checks the counters cleared at its existing file boundaries. Reads outside a method use the touched reader file as the unit of attribution, since a class or block declaration can have a different coverage line than its constant expression. These edges use the same hook attribution, serialization, and selection paths as ordinary coverage. This one-hop index does not trace transitive initialization-time dependencies.
 

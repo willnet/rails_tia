@@ -69,7 +69,7 @@ These settings apply during map collection.
 | `rails.active_record` | `true` | Track project model definitions identified by ActiveRecord query and instantiation events. |
 | `rails.action_view` | `true` | Track project templates, partials, and layouts rendered through ActionView. |
 | `rails.object_allocations` | `auto` | Track allocations on CRuby when Rails support is enabled. Set to `false` to disable the process-wide hook or `true` to require the native extension. |
-| `rails.constant_reads` | `true` | Link literal qualified reads such as `Config::LIMIT` to project assignments using the existing line coverage. Applies when Rails tracking is enabled. |
+| `rails.constant_reads` | `true` | Resolve constant reads such as `Config::LIMIT` to project assignments using the existing line coverage. Applies when Rails tracking is enabled. |
 | `rails.app_dirs` | `[]` | Additional project-relative directories for allocation and constant tracking alongside `app/` and `lib/`, for example `[components, engines/billing]`. |
 | `described_class.enabled` | `true` | Track the definition files of an RSpec example's named `described_class` and its ancestors. Works independently of Rails. |
 
@@ -81,7 +81,7 @@ If the extension fails to load in auto mode on CRuby, map generation warns and m
 
 Constant tracking indexes Ruby files in the application directories and runnable test files matching `spec_glob` when map collection starts. A change to an indexed constant assignment can select a test that executed the referencing method, even when Rails preloaded the definition. A read outside a method uses file-level coverage. Regenerate the map after enabling tracking or changing the directories.
 
-A method can execute without reaching every read in it. Relative names can also match assignments in multiple namespaces. Dynamic lookups such as `const_get`, unqualified names, aliases, inherited constants and values copied into another constant during boot can still need static mappings. Files added after collection starts or containing syntax Prism cannot parse are outside the index.
+A method can execute without reaching every read in it. Rubydex resolves names using the indexed namespaces and ancestors, including constants inherited from a parent class. Dynamic lookups such as `const_get`, constants replaced at runtime, ancestors outside the index, and values copied into another constant during boot can still need static mappings. Files added after collection starts or containing syntax Prism cannot parse are outside the index.
 
 ## CI adapters
 
