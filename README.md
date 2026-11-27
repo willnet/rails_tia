@@ -19,6 +19,28 @@ bundle exec rails-tia init
 
 `init` chooses Minitest when `test/` exists and `spec/` does not. Otherwise it chooses RSpec. Use `--runner minitest` or `--runner rspec` to choose explicitly.
 
+### AI agent skill
+
+The gem includes a [rails-tia skill](skills/rails-tia/SKILL.md) for selecting tests, configuring map collection, and explaining selection results. From the application root, copy the skill into the project directory for your agent. Repeat the copy after upgrading the gem to pick up skill updates.
+
+**Codex**
+
+```bash
+mkdir -p .agents/skills
+cp -R "$(bundle info rails_tia --path)/skills/rails-tia" .agents/skills/
+```
+
+For example, ask “Use rails-tia to run the tests affected by my uncommitted changes.”
+
+**Claude Code**
+
+```bash
+mkdir -p .claude/skills
+cp -R "$(bundle info rails_tia --path)/skills/rails-tia" .claude/skills/
+```
+
+In Claude Code, enter `/rails-tia Run the tests affected by my uncommitted changes` to invoke the skill directly.
+
 ## Configuration
 
 Review the generated `.rails_tia.yml` for your application's layout. Use `full_run.paths` for changes that affect the whole suite and `static_mapping` for files you can match to tests by name. The [configuration reference](docs/configuration.md) covers every setting, its default, and the rules generated for each runner.
