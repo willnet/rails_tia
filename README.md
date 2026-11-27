@@ -27,9 +27,19 @@ Selection combines coverage dependencies, static mappings, and changed spec file
 
 ## Configuration
 
-Create `.rails_tia.yml` in your project root. The paths and static mappings below are examples: adapt them to your application. Full-run paths, labels, tokens, and static mappings are empty by default.
+From your Rails application root, run:
 
-To use a different configuration file, set `RAILS_TIA_CONFIG` for the RSpec formatter or pass `--config PATH` to the CLI.
+```bash
+bundle exec rails-tia init
+```
+
+This creates an editable `.rails_tia.yml`. Changes to dependencies, Rails configuration, database files, layouts, shared partials, shared spec setup, and CI definitions trigger a full run. Static mappings select existing specs by convention. For example, a change to `app/controllers/admin/users_controller.rb` selects `spec/requests/admin/users_spec.rb` if it exists, even for a new controller. Other settings inherit the runtime defaults, including Rails tracking and CI adapter detection.
+
+Review the generated rules for your application's directory layout. Running `init` again keeps the existing file and exits with status 1. Without a configuration file, full-run paths, labels, tokens, and static mappings are empty. The following example shows additional settings you can customize.
+
+The preset selects all system and feature specs for changes under `app/javascript/`, `app/assets/`, or `vendor/javascript/`, and for changes to the root `package.json` or npm, Yarn, pnpm, or Bun lockfile. If neither spec directory contains matching files, this rule contributes no specs. Coverage matches, other static mappings, changed specs, and full-run conditions still apply.
+
+To use a different configuration file, set `RAILS_TIA_CONFIG` for the RSpec formatter or pass `--config PATH` to the CLI. For example, `rails-tia init --config tia.yml` adds `tia.yml` to the generated full-run paths so editing the selection rules triggers a full run. Only configuration files inside the project root can match project changes.
 
 ```yaml
 spec_glob: 'spec/**/*_spec.rb'
@@ -64,6 +74,10 @@ static_mapping:
     test: 'spec/requests/%s_request_spec.rb'
   - source: 'app/views/([^/]+)/.+'
     test: 'spec/requests/%s_request_spec.rb'
+  - source: 'app/(?:javascript|assets)/.+'
+    test_glob:
+      - 'spec/system/**/*_spec.rb'
+      - 'spec/features/**/*_spec.rb'
 
 described_class:
   enabled: true
@@ -80,6 +94,8 @@ metrics_path: tmp/rails_tia/metrics.json
 ```
 
 Path globs use Ruby's `File.fnmatch?` with `FNM_PATHNAME | FNM_EXTGLOB`. Use `config/**/*` for nested paths; `config/**` does not match nested files. Static mapping sources are regular expressions, rather than path globs.
+
+In a static mapping, `test` produces individual paths using the source's captures. Use `test_glob` for a fixed pattern or list of patterns relative to the project root. Absolute paths and `..` path components are invalid. Each matching source selects files found by those globs whose resolved paths are inside the project. This also applies when a file or directory is a symlink.
 
 Rails support is enabled automatically when Rails is loaded. ActiveRecord tracking supplements coverage for model dependencies that coverage alone may miss.
 

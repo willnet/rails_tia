@@ -27,9 +27,10 @@ module RailsTia
       end
 
       specs = Set.new
+      glob_cache = {}
       static_by_source = {} if trace
       context.changed_files.each do |path|
-        static = @static_mapping.candidates_for(path)
+        static = @static_mapping.candidates_for(path, glob_cache: glob_cache)
         specs.merge(@map.specs_for(path)).merge(static)
         specs << path if spec_file?(path)
         static_by_source[path] = static if trace
