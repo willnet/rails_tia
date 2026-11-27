@@ -18,6 +18,7 @@ CI also runs the Minitest integration specs on Ruby 4.0 with Rails 8.1 and Minit
 
 ```sh
 BUNDLE_GEMFILE=gemfiles/rails_8_1.gemfile bundle install
+BUNDLE_GEMFILE=gemfiles/rails_8_1.gemfile bundle exec rake compile
 BUNDLE_GEMFILE=gemfiles/rails_8_1.gemfile bundle exec rspec spec/integration/minitest_spec.rb
 ```
 

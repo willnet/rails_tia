@@ -88,8 +88,8 @@ Predictor result separately. The template case explicitly strips runtime edges
 to prove the static rule supplies the prediction.
 
 The runner checks every mapping case in normal and eager modes with `defined`,
-`rand:12`, and `rand:97` ordering. Eager mode with AR supplementation disabled runs
-once and checks only the model comparison. One process supplies all applicable
+`rand:12`, and `rand:97` ordering. The model comparison runs once more in eager mode with both ActiveRecord
+and object allocation tracking disabled. One process supplies all applicable
 mapping cases for each mode/order pair.
 
 `spec/integration/action_view_mapping_spec.rb` additionally removes all static

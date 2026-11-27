@@ -6,7 +6,7 @@ RSpec.describe 'specロード後のRails依存補完' do
     Dir.mktmpdir do |root|
       FileUtils.mkdir_p(File.join(root, 'app/models'))
       FileUtils.mkdir_p(File.join(root, 'spec'))
-      File.write(File.join(root, '.rails_tia.yml'), "rails:\n  enabled: #{enabled}\n  active_record: #{active_record}\n")
+      File.write(File.join(root, '.rails_tia.yml'), "rails:\n  enabled: #{enabled}\n  active_record: #{active_record}\n  object_allocations: false\n")
       File.write(File.join(root, 'app/models/user.rb'), "class User < ActiveRecord::Base\nend\n")
       File.write(File.join(root, 'spec/a_spec.rb'), <<~RUBY)
         require 'rails'
